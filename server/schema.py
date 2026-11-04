@@ -3,7 +3,7 @@
 Ogni scheda descrive campi modificabili, query di lettura, ordinamento, ricerca, colonna del cliente,
 visibilità nel team e layout del modulo di modifica. Aggiungere una sezione = aggiungere una scheda.
 
-Tipi di campo: text, longtext, enum, fk, date, datetime, time, int, bool, email, color, steps.
+Tipi di campo: text, company (testo scelto dall'elenco delle aziende), longtext, enum, fk, date, datetime, time, int, bool, email, color, steps.
 """
 from dataclasses import dataclass, field
 
@@ -92,22 +92,32 @@ add(Resource(
 add(Resource(
     "contacts", "Contatto", "co",
     fields={
-        "name": ("text", "Nome", None), "company": ("text", "Azienda", None),
+        "first_name": ("text", "Nome", None), "last_name": ("text", "Cognome", None),
+        "name": ("text", "Nome completo", None), "company": ("company", "Azienda", None),
         "customer_id": ("fk", "Cliente", "customers"), "role": ("text", "Ruolo", None),
         "email": ("email", "Email", None), "phone": ("text", "Telefono", None),
         "is_consultant": ("bool", "Consulente", None), "is_service_manager": ("bool", "Service manager", None),
         "notes": ("longtext", "Note", None),
     },
-    required=("name",), title="name",
+    title="name",
     select=f"""SELECT co.*, cu.name AS customer_name, cu.code AS customer_code,
         (SELECT json_group_array(json_object('id', s.customer_id, 'name', c2.name))
             FROM service_manager_customers s JOIN customers c2 ON c2.id = s.customer_id
             WHERE s.contact_id = co.id) AS sm_customers,
         {_att('contacts', 'co')}
         FROM contacts co LEFT JOIN customers cu ON cu.id = co.customer_id""",
-    order="casefold(co.name)",
-    search=("name", "company", "role", "email", "phone", "notes"), customer_col="co.customer_id",
-    form=[["name", "company"], ["customer_id", "role"], ["email", "phone"], ["is_consultant", "is_service_manager"], ["notes"]],
+    order="casefold(COALESCE(NULLIF(co.last_name, ''), co.first_name, co.name)), casefold(co.first_name)",
+    search=("name", "first_name", "last_name", "company", "role", "email", "phone", "notes"), customer_col="co.customer_id",
+    form=[["first_name", "last_name"], ["company", "role"], ["customer_id"], ["email", "phone"], ["is_consultant", "is_service_manager"], ["notes"]],
+))
+
+add(Resource(
+    "companies", "Azienda", "cm",
+    fields={"name": ("text", "Nome", None)},
+    required=("name",), title="name", unique="name",
+    select="""SELECT cm.*, (SELECT COUNT(*) FROM contacts co WHERE casefold(co.company) = casefold(cm.name)) AS contacts_count
+        FROM companies cm""",
+    order="casefold(cm.name)", search=("name",), attachments=False, log=False,
 ))
 
 add(Resource(
@@ -425,7 +435,7 @@ ATTACHMENT_TYPES = tuple(n for n, r in R.items() if r.attachments)
 
 # Ordine di inserimento che rispetta le chiavi esterne.
 TABLE_ORDER = (
-    "users", "customers", "contacts", "projects", "events", "meetings", "tasks", "subtasks", "consultations",
+    "users", "customers", "companies", "contacts", "projects", "events", "meetings", "tasks", "subtasks", "consultations",
     "changes", "change_freezes", "deadlines", "waiting_items", "inbox_items", "checklist_templates",
     "checklist_runs", "sticky_notes", "time_entries",
 )

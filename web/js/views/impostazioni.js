@@ -1,6 +1,6 @@
 // Impostazioni: aspetto, giornata, notifiche, backup, dati, import da Activity Desk, team.
 import { get, post, put } from "../api.js";
-import { applyTheme } from "../app.js";
+import { THEMES, applyTheme } from "../app.js";
 import { openEditor } from "../form.js";
 import {
   avatar, badge, card, clear, confirmDialog, fmtDate, h, icon, invalidate, isAdmin, isTeam, label, loadUsers, me, pageHead, select,
@@ -19,7 +19,9 @@ export async function render(root, ctx) {
 
   const look = card("Aspetto", h("div", { class: "card-body form" },
     h("div", { class: "form-row" },
-      h("label", { class: "field" }, "Tema", select("theme", [["auto", "Come il sistema"], ["chiaro", "Chiaro"], ["scuro", "Scuro"]], s.theme, { onchange: (e) => save({ theme: e.target.value }) })),
+      h("label", { class: "field" }, "Tema", h("select", { name: "theme", onchange: (e) => save({ theme: e.target.value }) },
+        h("optgroup", { label: "Base" }, [["auto", "Come il sistema"], ["chiaro", "Chiaro"], ["scuro", "Scuro"]].map(([v, l]) => h("option", { value: v, selected: v === s.theme }, l))),
+        ["Tenui", "Decisi"].map((g) => h("optgroup", { label: g }, THEMES.filter((t) => t[2] === g).map(([v, l]) => h("option", { value: v, selected: v === s.theme }, l)))))),
       h("label", { class: "field" }, "Densità degli elenchi", select("density", [["comoda", "Comoda"], ["compatta", "Compatta"]], s.density, { onchange: (e) => save({ density: e.target.value }) })))));
 
   const dayForm = h("form", { class: "card-body form" },

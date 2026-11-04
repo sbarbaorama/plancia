@@ -1,18 +1,22 @@
 // Riquadro allegati: file (trascina o scegli) e link (OneDrive, SharePoint, percorsi di rete).
 import { del, get, post, qs, upload } from "./api.js";
+import { clipboardImages } from "./paste.js";
 import { clear, confirmDialog, copyText, h, icon, showError, toast } from "./ui.js";
 
 const MAX = 25 * 1024 * 1024;
 
 export function attachmentsBox(entityType, entityId) {
   const list = h("div", { class: "stack", style: { gap: "4px" } });
+  const thumbs = h("div", { class: "thumbs" });
   const fileInput = h("input", { type: "file", multiple: true, hidden: true, onchange: (e) => send([...e.target.files]) });
   const box = h("div", { class: "att-box" },
     h("div", { class: "row" }, icon("clip"), h("b", { class: "small" }, "Allegati"), h("span", { class: "spacer" }),
       h("button", { class: "btn btn-sm", type: "button", onclick: () => fileInput.click() }, "Scegli file…"),
       h("button", { class: "btn btn-sm", type: "button", onclick: addLink }, "+ Link")),
-    list, fileInput,
-    h("div", { class: "hint" }, "Trascina qui i file (max 25 MB) oppure aggiungi un link a OneDrive, SharePoint o \\\\server\\cartella."));
+    thumbs, list, fileInput,
+    h("div", { class: "hint" }, "Trascina qui i file (max 25 MB), incolla un'immagine con Ctrl+V oppure aggiungi un link a OneDrive, SharePoint o \\\\server\\cartella."));
+  box.tabIndex = -1;
+  box.reload = () => load();
 
   async function load() {
     try {
@@ -31,6 +35,10 @@ export function attachmentsBox(entityType, entityId) {
           try { await del(`/api/attachments/${a.id}`); load(); } catch (err) { showError(err); }
         } }, icon("trash")))));
       if (!items.length) list.append(h("span", { class: "small muted" }, "Nessun allegato"));
+      const images = items.filter((a) => a.kind === "file" && !a.missing && /^image\//.test(a.mime || ""));
+      clear(thumbs, images.map((a) => h("a", { class: "thumb", href: `/api/attachments/${a.id}/file`, target: "_blank", rel: "noopener", title: a.name },
+        h("img", { src: `/api/attachments/${a.id}/file`, alt: a.name, loading: "lazy" }))));
+      thumbs.hidden = !images.length;
     } catch (err) { showError(err); }
   }
 
@@ -56,6 +64,13 @@ export function attachmentsBox(entityType, entityId) {
     e.preventDefault(); e.stopPropagation(); box.classList.remove("over");
     if (e.dataTransfer.files.length) send([...e.dataTransfer.files]);
   });
+  // incolla un'immagine con il riquadro selezionato (i moduli gestiscono già l'incolla nei campi)
+  box.addEventListener("paste", (e) => {
+    if (e.target.closest("form") && e.target !== box) return;
+    const files = clipboardImages(e);
+    if (files.length) { e.preventDefault(); e.stopPropagation(); send(files); }
+  });
+  box.addEventListener("click", (e) => { if (e.target === box) box.focus(); });
   load();
   return box;
 }

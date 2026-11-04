@@ -7,14 +7,23 @@ import {
 import { changeRow, consultationRow, deadlineRow, eventRow, list, meetingRow, taskRow, waitRow } from "../rows.js";
 import {
   badge, card, clear, copyText, customerChip, fmtDate, fmtDateTime, fmtDue, fmtHours, fmtMin, h, icon, kpi, label, pageHead, popMenu,
-  segmented, showError, tabs, todayISO,
+  segmented, showError, tabs, todayISO, viewMode, viewToggle,
 } from "../ui.js";
 import { CHANGE_LEGEND, changeCalendarGrid } from "./modifiche.js";
 
 const FEED_MAX = 8;
 let showAllFeed = false;
 
-const state = { active: "1", q: "" };
+const state = { active: "1", q: "", view: viewMode("clienti", "schede") };
+
+function customerRow(c) {
+  return h("li", { class: "item", onclick: () => { location.hash = `#/clienti/${c.id}`; } },
+    h("div", { class: "cust-tile", style: { width: "36px", height: "36px", fontSize: "11px" } }, c.code || c.name.slice(0, 3).toUpperCase()),
+    h("div", { class: "main-col" }, h("div", { class: "t-title" }, c.name, !c.active ? h("span", { class: "muted small" }, " · non attivo") : null),
+      h("div", { class: "meta" }, h("span", {}, `${c.open_tasks} task`), c.open_waits ? h("span", {}, `${c.open_waits} attese`) : null,
+        c.deadlines_due ? h("span", { class: "soon" }, `${c.deadlines_due} scadenze`) : null, c.projects_count ? h("span", {}, `${c.projects_count} progetti`) : null)),
+    c.monthly_hours ? h("div", { class: "side-col" }, `${c.monthly_hours} h/mese`) : null);
+}
 const RES_LABEL = { tasks: "Task", changes: "Modifica", deadlines: "Scadenza", waiting_items: "Attesa", meetings: "Verbale", events: "Appuntamento",
   consultations: "Consulenza", projects: "Progetto", contacts: "Contatto", customers: "Cliente", sticky_notes: "Post-it", checklist_runs: "Checklist", change_freezes: "Blocco" };
 const RES_COLOR = { tasks: "var(--info-ink)", changes: "var(--warn)", deadlines: "var(--violet)", waiting_items: "var(--muted)", meetings: "var(--violet)",
@@ -32,8 +41,10 @@ export async function render(root, ctx) {
       h("button", { class: "btn btn-primary", type: "button", onclick: () => openCustomerEditor(null, { onSave: reload }) }, icon("plus"), "Nuovo cliente")),
     h("div", { class: "filters" },
       h("input", { type: "search", placeholder: "Cerca cliente o sigla…", value: state.q, oninput: (e) => { state.q = e.target.value; reload(); } }),
-      segmented([["1", "Attivi"], ["", "Tutti"]], state.active, (v) => { state.active = v; reload(); }, "Stato")),
-    shown.length ? h("div", { class: "grid", style: { gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" } }, shown.map((c) =>
+      segmented([["1", "Attivi"], ["", "Tutti"]], state.active, (v) => { state.active = v; reload(); }, "Stato"),
+      h("span", { class: "spacer" }), viewToggle("clienti", state.view, (v) => { state.view = v; reload(); })),
+    shown.length && state.view === "lista" ? h("ul", { class: "list card" }, shown.map(customerRow))
+    : shown.length ? h("div", { class: "grid", style: { gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" } }, shown.map((c) =>
       h("a", { class: "card card-pad", href: `#/clienti/${c.id}`, style: { color: "inherit", textDecoration: "none", display: "flex", gap: "14px", alignItems: "center" } },
         h("div", { class: "cust-tile", style: { width: "48px", height: "48px", fontSize: "14px" } }, c.code || c.name.slice(0, 3).toUpperCase()),
         h("div", { style: { flex: 1, minWidth: 0 } },

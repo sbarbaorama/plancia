@@ -3,10 +3,12 @@ import { get, qs } from "../api.js";
 import { openChangeEditor, openFreezeEditor } from "../editors.js";
 import { changeRow } from "../rows.js";
 import {
-  addDays, clear, customerFilter, fmtDate, h, icon, label, loadCustomers, mondayOf, pageHead, parseISO, select, tabs, todayISO,
+  addDays, clear, customerFilter, fmtDate, h, icon, label, listOrCards, loadCustomers, mondayOf, pageHead, parseISO, select, tabs, todayISO,
+  viewMode, viewToggle,
 } from "../ui.js";
 
 const state = { tab: "registro", customer_id: "", outcome: "", kind: "", q: "" };
+let view = viewMode("modifiche");
 const DOW = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
 
 /** Griglia di due settimane lavorative (usata anche nella pagina cliente). */
@@ -47,10 +49,11 @@ export async function render(root, ctx) {
         h("input", { type: "search", placeholder: "Cerca…", value: state.q, onchange: (e) => { state.q = e.target.value; reload(); } }),
         customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; reload(); }),
         select("outcome", [["", "Ogni esito"], ...["pianificata", "eseguita", "fallita", "rollback", "annullata"].map((o) => [o, label(o)])], state.outcome, { "aria-label": "Esito", onchange: (e) => { state.outcome = e.target.value; reload(); } }),
-        select("kind", [["", "Ogni tipo"], ...["nuovo_host", "soglie", "upgrade", "regola", "certificato", "altro"].map((o) => [o, label(o)])], state.kind, { "aria-label": "Tipo", onchange: (e) => { state.kind = e.target.value; reload(); } })),
-      planned.length ? [h("div", { class: "group-title" }, `Pianificate · ${planned.length}`), h("ul", { class: "list card" }, planned.map((c) => changeRow(c, { onChange: reload })))] : null,
+        select("kind", [["", "Ogni tipo"], ...["nuovo_host", "soglie", "upgrade", "regola", "certificato", "altro"].map((o) => [o, label(o)])], state.kind, { "aria-label": "Tipo", onchange: (e) => { state.kind = e.target.value; reload(); } }),
+        h("span", { class: "spacer" }), viewToggle("modifiche", view, (v) => { view = v; reload(); })),
+      planned.length ? [h("div", { class: "group-title" }, `Pianificate · ${planned.length}`), h("ul", { class: listOrCards(view) }, planned.map((c) => changeRow(c, { onChange: reload })))] : null,
       h("div", { class: "group-title" }, `Registro · ${rest.length}`),
-      rest.length ? h("ul", { class: "list card" }, rest.map((c) => changeRow(c, { onChange: reload }))) : h("div", { class: "card" }, h("div", { class: "empty" }, "Nessuna modifica registrata.")),
+      rest.length ? h("ul", { class: listOrCards(view) }, rest.map((c) => changeRow(c, { onChange: reload }))) : h("div", { class: "card" }, h("div", { class: "empty" }, "Nessuna modifica registrata.")),
     ];
   } else if (state.tab === "calendario") {
     const start = ctx.query.from || mondayOf(todayISO());

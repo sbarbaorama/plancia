@@ -193,10 +193,18 @@ async function checkReminders() {
 }
 
 // ------------------------------------------------------------------ tema, login, avvio
+/** Temi disponibili: [valore, etichetta, gruppo]. */
+export const THEMES = [
+  ["salvia", "Salvia", "Tenui"], ["lavanda", "Lavanda", "Tenui"], ["sabbia", "Sabbia", "Tenui"],
+  ["cobalto", "Cobalto", "Decisi"], ["corallo", "Corallo", "Decisi"], ["smeraldo", "Smeraldo (scuro)", "Decisi"],
+];
 export function applyTheme(settings) {
   const root = document.documentElement;
   const t = settings.theme;
-  if (t === "chiaro") root.dataset.theme = "light"; else if (t === "scuro") root.dataset.theme = "dark"; else delete root.dataset.theme;
+  const named = { chiaro: "light", scuro: "dark" };
+  if (named[t]) root.dataset.theme = named[t];
+  else if (THEMES.some(([k]) => k === t)) root.dataset.theme = t;
+  else delete root.dataset.theme;
   root.dataset.density = settings.density || "comoda";
   try { localStorage.setItem("plancia-theme", t); localStorage.setItem("plancia-density", root.dataset.density); } catch { /* */ }
 }

@@ -2,9 +2,10 @@
 import { get, post, put } from "./api.js";
 import { attachmentsBox } from "./attachments.js";
 import { field, openEditor, readForm } from "./form.js";
+import { pasteImages } from "./paste.js";
 import {
   addDays, autoGrow, clear, closePanel, confirmDialog, copyText, fmtDate, fmtDateTime, h, icon, isTeam, label,
-  loadContacts, loadCustomers, loadProjects, nowLocal, onSubmitOnce, openPanel, popMenu, printDoc, showError, store, toast, todayISO,
+  loadContacts, loadCustomers, loadProjects, nowLocal, onSubmitOnce, openPanel, popMenu, printDoc, resolveCombos, showError, store, toast, todayISO,
 } from "./ui.js";
 
 export const emit = (name, detail) => window.dispatchEvent(new CustomEvent(`plancia:${name}`, { detail }));
@@ -16,14 +17,15 @@ export function subtasksEditor(items = [], { outcome = true, placeholder = "Nuov
   const rows = [];
   const addRow = (s = {}) => {
     const done = h("input", { type: "checkbox", checked: !!s.done, "aria-label": "Fatto" });
-    const title = h("input", { type: "text", value: s.title || "", placeholder, maxlength: 300 });
-    const out = outcome ? h("input", { type: "text", class: "outcome", value: s.outcome || "", placeholder: "Esito (facoltativo)", maxlength: 2000 }) : null;
+    const title = autoGrow(h("textarea", { rows: 1, class: "line", value: s.title || "", placeholder, maxlength: 300, "aria-label": "Attività" }));
+    const out = outcome ? autoGrow(h("textarea", { rows: 1, class: "line outcome", value: s.outcome || "", placeholder: "Esito / note (facoltativo)", maxlength: 2000, "aria-label": "Esito" })) : null;
     const row = h("div", { class: "subtask" }, done, title,
       h("button", { class: "icon-btn", type: "button", "aria-label": "Togli", onclick: () => { row.remove(); rows.splice(rows.indexOf(ref), 1); } }, icon("x")), out);
     const ref = { id: s.id, done, title, out, row };
     rows.push(ref);
     title.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); const n = addRow(); n.title.focus(); }
+      // Invio = nuova attività; Maiusc+Invio = a capo nella stessa
+      if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); const n = addRow(); n.title.focus(); }
     });
     wrap.insertBefore(row, addBtn);
     return ref;
@@ -236,6 +238,7 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
     field("notes", extraFields.notes, v.notes, fk),
     !isNew ? attachmentsBox("consultations", cons.id) : null);
   const all = { ...fields, ...extraFields };
+  const pasted = pasteImages(form, "consultations", isNew ? null : cons.id);
   const foot = h("div", { class: "panel-foot" },
     h("button", { class: "btn btn-primary", type: "submit" }, isNew ? "Crea" : "Salva"),
     !isNew && full.status !== "chiusa" ? h("button", { class: "btn", type: "button", onclick: () => saveThen("close") }, "Chiudi giornata") : null,
@@ -253,10 +256,11 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
       }],
     ]) }, icon("menu")) : null);
   form.append(foot);
-  const collect = () => ({ ...readForm(form, all), activities: acts.value() });
+  form.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); } });
+  const collect = async () => { await resolveCombos(form); return { ...readForm(form, all), activities: acts.value() }; };
   async function saveThen(action) {
     try {
-      const saved = await put(`/api/consultations/${cons.id}`, collect());
+      const saved = await put(`/api/consultations/${cons.id}`, await collect());
       const r = action === "close" ? await post(`/api/consultations/${cons.id}/close`, { closing_note: form.elements.namedItem("closing_note").value })
         : await post(`/api/consultations/${cons.id}/reopen`);
       toast(action === "close" ? "Giornata chiusa" : "Riaperta", "ok");
@@ -266,8 +270,9 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
   }
   onSubmitOnce(form, async () => {
     try {
-      const data = collect();
+      const data = await collect();
       const saved = isNew ? await post("/api/consultations", data) : await put(`/api/consultations/${cons.id}`, data);
+      if (isNew && saved?.id) await pasted.flush(saved.id);
       toast(isNew ? "Consulenza creata" : "Salvata", "ok");
       closePanel();
       onSave(saved);

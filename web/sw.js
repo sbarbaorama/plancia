@@ -1,6 +1,6 @@
 // Service worker: tiene in cache solo l'interfaccia (per aprirla anche se il server tarda). I dati passano sempre dal server.
 // L'elenco dei file non serve: si mette in cache ciò che viene caricato, con strategia "prima la rete".
-const CACHE = "plancia-v4";
+const CACHE = "plancia-v5";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/index.html", "/css/app.css", "/js/app.js", "/js/boot.js"])).then(() => self.skipWaiting()));

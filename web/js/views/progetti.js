@@ -3,9 +3,22 @@ import { get, qs } from "../api.js";
 import { attachmentsBox } from "../attachments.js";
 import { openEventEditor, openProjectEditor, openTaskEditor } from "../editors.js";
 import { eventRow, list, meetingRow, taskRow } from "../rows.js";
-import { badge, card, clear, customerChip, customerFilter, fmtDue, h, icon, kpi, label, loadCustomers, pageHead, segmented, todayISO } from "../ui.js";
+import {
+  badge, card, clear, customerChip, customerFilter, fmtDue, h, icon, kpi, label, loadCustomers, pageHead, segmented, todayISO, viewMode, viewToggle,
+} from "../ui.js";
 
-const state = { customer_id: "", status: "attivo" };
+const state = { customer_id: "", status: "attivo", view: viewMode("progetti", "schede") };
+
+function projectRow(p) {
+  const tot = p.open_tasks + p.closed_tasks;
+  const pct = tot ? Math.round((p.closed_tasks / tot) * 100) : 0;
+  return h("li", { class: "item", onclick: () => { location.hash = `#/progetti/${p.id}`; } },
+    h("span", { class: "dot", style: { background: p.color, width: "10px", height: "10px" } }),
+    h("div", { class: "main-col" }, h("div", { class: "t-title" }, p.name, p.status !== "attivo" ? [" ", badge(label(p.status))] : null),
+      h("div", { class: "meta" }, customerChip(p), h("span", {}, `${p.open_tasks} aperti`), p.meetings_count ? h("span", {}, `${p.meetings_count} verbali`) : null,
+        p.next_due ? h("span", { class: p.next_due < todayISO() ? "late" : "" }, `prossima scad. ${fmtDue(p.next_due)}`) : null)),
+    h("div", { class: "side-col", style: { width: "120px" } }, h("div", { class: "bar" }, h("span", { style: { width: `${pct}%` } })), h("div", { class: "small" }, `${pct}%`)));
+}
 
 export async function render(root, ctx) {
   if (ctx.id) return renderOne(root, ctx);
@@ -18,8 +31,10 @@ export async function render(root, ctx) {
       h("button", { class: "btn btn-primary", type: "button", onclick: () => openProjectEditor(null, { onSave: reload, prefill: { customer_id: state.customer_id || null } }) }, icon("plus"), "Nuovo progetto")),
     h("div", { class: "filters" },
       segmented([["attivo", "Attivi"], ["in_pausa", "In pausa"], ["chiuso", "Chiusi"], ["tutti", "Tutti"]], state.status, (v) => { state.status = v; reload(); }, "Stato"),
-      customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; reload(); })),
-    items.length ? h("div", { class: "grid", style: { gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" } }, items.map((p) => {
+      customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; reload(); }),
+      h("span", { class: "spacer" }), viewToggle("progetti", state.view, (v) => { state.view = v; reload(); })),
+    items.length && state.view === "lista" ? h("ul", { class: "list card" }, items.map(projectRow))
+    : items.length ? h("div", { class: "grid", style: { gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" } }, items.map((p) => {
       const tot = p.open_tasks + p.closed_tasks;
       return h("a", { class: "card card-pad", href: `#/progetti/${p.id}`, style: { color: "inherit", textDecoration: "none", display: "flex", flexDirection: "column", gap: "10px", borderTop: `4px solid ${p.color}` } },
         h("div", { class: "row" }, h("h2", { style: { flex: 1 } }, p.name), p.status !== "attivo" ? badge(label(p.status)) : null),

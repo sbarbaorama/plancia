@@ -3,13 +3,15 @@ import { del, get, post, put, qs } from "../api.js";
 import { setLeaveGuard } from "../app.js";
 import { attachmentsBox } from "../attachments.js";
 import { field, readForm } from "../form.js";
+import { pasteImages } from "../paste.js";
 import { meetingRow, taskRow } from "../rows.js";
 import {
   badge, clear, confirmDialog, customerFilter, fmtDate, fmtDateTime, h, icon, isTeam, label, loadCustomers, loadProjects, loadUsers,
-  nowLocal, pageHead, printDoc, select, showError, store, toast,
+  listOrCards, nowLocal, pageHead, printDoc, resolveCombos, select, showError, store, toast, viewMode, viewToggle,
 } from "../ui.js";
 
 const state = { customer_id: "", series: "", q: "" };
+let view = viewMode("riunioni");
 
 export async function render(root, ctx) {
   if (ctx.id) return renderDoc(root, ctx);
@@ -24,12 +26,13 @@ export async function render(root, ctx) {
     h("div", { class: "filters" },
       h("input", { type: "search", placeholder: "Cerca nei verbali…", value: state.q, onchange: (e) => { state.q = e.target.value; render(root, ctx); } }),
       customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; render(root, ctx); }),
-      select("series", [["", "Tutte le serie"], ...series.map((s) => [s, s])], state.series, { "aria-label": "Serie", onchange: (e) => { state.series = e.target.value; render(root, ctx); } })),
+      select("series", [["", "Tutte le serie"], ...series.map((s) => [s, s])], state.series, { "aria-label": "Serie", onchange: (e) => { state.series = e.target.value; render(root, ctx); } }),
+      h("span", { class: "spacer" }), viewToggle("riunioni", view, (v) => { view = v; render(root, ctx); })),
     items.length ? (bySeries
       ? Object.entries(bySeries).sort(([a], [b]) => (a === "") - (b === "") || a.localeCompare(b)).map(([s, ms]) => [
         h("div", { class: "group-title" }, s || "Riunioni singole", ` · ${ms.length}`),
-        h("ul", { class: "list card" }, ms.map(meetingRow))])
-      : h("ul", { class: "list card" }, items.map(meetingRow)))
+        h("ul", { class: listOrCards(view) }, ms.map(meetingRow))])
+      : h("ul", { class: listOrCards(view) }, items.map(meetingRow)))
       : h("div", { class: "card" }, h("div", { class: "empty" }, "Nessun verbale. Creane uno: partecipanti, ordine del giorno, decisioni e azioni.")));
 }
 
@@ -58,6 +61,7 @@ async function renderDoc(root, ctx) {
     h("div", { class: "doc-big" }, field("discussion", F.discussion, m.discussion, fk)),
     h("div", { class: "doc-pair" }, field("decisions", F.decisions, m.decisions, fk), field("next_meeting", F.next_meeting, m.next_meeting, fk)));
   if (isTeam()) form.append(field("visibility", F.visibility, m.visibility, fk));
+  const pasted = pasteImages(form, "meetings", isNew ? null : m.id);
 
   // azioni
   const rowsBox = h("div", { class: "action-list" });
@@ -85,10 +89,13 @@ async function renderDoc(root, ctx) {
   setLeaveGuard(() => dirty);
 
   async function save(silent = false) {
-    const data = readForm(form, F);
     try {
-      const saved = isNew && !m.id ? await post("/api/meetings", { ...data, event_id: m.event_id || null }) : await put(`/api/meetings/${m.id}`, data);
+      await resolveCombos(form);
+      const data = readForm(form, F);
+      const created = isNew && !m.id;
+      const saved = created ? await post("/api/meetings", { ...data, event_id: m.event_id || null }) : await put(`/api/meetings/${m.id}`, data);
       m = saved;
+      if (created) await pasted.flush(m.id);
       await put(`/api/meetings/${m.id}/actions`, { actions: readActions() });
       dirty = false;
       setLeaveGuard(null);

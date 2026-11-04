@@ -24,6 +24,7 @@ SETTINGS_DEFAULTS = {
     "last_backup": None,
     "last_backup_error": None,
 }
+THEMES = ("auto", "chiaro", "scuro", "salvia", "lavanda", "sabbia", "cobalto", "corallo", "smeraldo")
 PUBLIC_SETTINGS = ("backup_dir", "retention_days", "theme", "density", "work_hours", "day_start", "day_end",
                    "notifications", "legacy_db_path")
 
@@ -61,7 +62,7 @@ def put_settings(conn, data, internal=False):
                 raise ValidationError("Ore al giorno: tra 0,5 e 16")
         elif key in ("day_start", "day_end"):
             value = crud.parse_time(value, "Orario")
-        elif key == "theme" and value not in ("auto", "chiaro", "scuro"):
+        elif key == "theme" and value not in THEMES:
             raise ValidationError("Tema non valido")
         elif key == "density" and value not in ("comoda", "compatta"):
             raise ValidationError("Densità non valida")

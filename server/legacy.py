@@ -74,7 +74,7 @@ def _copy(conn, src, path, uid):
         conn.execute("PRAGMA defer_foreign_keys = ON")
         for t in ("attachments", "activity_log", "service_manager_customers", "time_entries", "checklist_runs",
                   "checklist_templates", "sticky_notes", "inbox_items", "waiting_items", "deadlines", "change_freezes",
-                  "changes", "consultations", "subtasks", "tasks", "meetings", "events", "projects", "contacts", "customers"):
+                  "changes", "consultations", "subtasks", "tasks", "meetings", "events", "projects", "contacts", "companies", "customers"):
             conn.execute(f"DELETE FROM {t}")
 
         def copy(table, cols, transform=None):
@@ -94,6 +94,7 @@ def _copy(conn, src, path, uid):
         copy("customers", ("name", "code", "notes", "active"))
         copy("contacts", ("name", "company", "customer_id", "role", "email", "phone", "notes", "is_consultant",
                           "is_service_manager"))
+        crud.sync_contacts(conn)
         copy("projects", ("name", "description", "status", "color", "customer_id"),
              lambda r, rec: {**rec, "owner_id": uid, "visibility": "team"})
         copy("events", ("title", "start", "end", "all_day", "location", "notes", "project_id"),

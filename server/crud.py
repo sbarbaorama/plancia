@@ -122,7 +122,7 @@ def _steps(value, label):
 
 def _clean(conn, res, name, value):
     kind, label, opt = res.fields[name]
-    if kind in ("text", "longtext", "email"):
+    if kind in ("text", "longtext", "email", "company"):
         if value is None:
             return ""
         if not isinstance(value, (str, int, float)):
@@ -444,6 +444,10 @@ def _finalize(conn, resource, record, old=None):
         outcome = record.get("outcome", old.get("outcome"))
         if outcome in ("eseguita", "fallita", "rollback") and not (record.get("executed_at") or old.get("executed_at")):
             record["executed_at"] = datetime.now().strftime("%Y-%m-%dT%H:%M")
+    elif resource == "contacts":
+        _contact_names(record, old)
+        if record.get("company"):
+            remember_company(conn, record["company"])
     elif resource == "time_entries":
         # il cliente di una registrazione su task si ricava dal task (se non indicato)
         if record.get("task_id") and not record.get("customer_id") and not old.get("customer_id"):
@@ -453,6 +457,43 @@ def _finalize(conn, resource, record, old=None):
                 record["customer_id"] = row[0]
                 record.setdefault("project_id", row[1])
     return record
+
+
+def split_name(full):
+    """"Mario Rossi" → ("Mario", "Rossi"); una sola parola resta nel nome."""
+    parts = (full or "").strip().split(None, 1)
+    return (parts[0], parts[1]) if len(parts) == 2 else ((parts[0], "") if parts else ("", ""))
+
+
+def _contact_names(record, old):
+    """Nome e cognome separati; "name" (nome completo) resta per elenchi e ricerche."""
+    if ("first_name" in record or "last_name" in record):
+        first = record.get("first_name", old.get("first_name", ""))
+        last = record.get("last_name", old.get("last_name", ""))
+        record["name"] = " ".join(x for x in (first, last) if x)
+    elif record.get("name"):
+        # chi manda solo il nome completo (importazioni, palette, versioni precedenti)
+        record["first_name"], record["last_name"] = split_name(record["name"])
+    name = record.get("name", old.get("name", ""))
+    if not name:
+        raise ValidationError("Nome o cognome: campo obbligatorio")
+
+
+def remember_company(conn, name):
+    """Aggiunge l'azienda all'elenco del menu a tendina (se non c'è già)."""
+    name = (name or "").strip()
+    if name and not conn.execute("SELECT 1 FROM companies WHERE casefold(name) = casefold(?)", (name,)).fetchone():
+        now = now_iso()
+        conn.execute("INSERT INTO companies (name, created_at, updated_at) VALUES (?, ?, ?)", (name, now, now))
+
+
+def sync_contacts(conn):
+    """Dopo un'importazione: nome/cognome dai nomi completi e aziende nell'elenco."""
+    for row in conn.execute("SELECT id, name FROM contacts WHERE first_name = '' AND last_name = ''").fetchall():
+        first, last = split_name(row["name"])
+        conn.execute("UPDATE contacts SET first_name = ?, last_name = ? WHERE id = ?", (first, last, row["id"]))
+    for row in conn.execute("SELECT DISTINCT trim(company) AS c FROM contacts WHERE trim(company) != ''").fetchall():
+        remember_company(conn, row["c"])
 
 
 def _insert(conn, table, record):

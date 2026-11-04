@@ -44,10 +44,18 @@ Activity Desk e Plancia usano porte diverse (8765 e 8770): possono convivere fin
 | | **In attesa di** | Ticket e risposte attese; "Sollecita" registra il sollecito, apre la mail al contatto e sposta il prossimo di 3 giorni lavorativi |
 | | **Checklist** | Procedure ripetibili (es. "Upgrade NetEye"), avviabili anche da una modifica |
 | Clienti | **Clienti** | Il **cockpit** del cliente: numeri di sintesi, calendario modifiche di due settimane, attività recente, scadenze, attese, ore del mese rispetto alle ore a contratto, e schede con task, modifiche, riunioni, consulenze, progetti, contatti e note |
-| | **Contatti** | Rubrica; *Consulente* e *Service manager* (con i clienti seguiti) |
+| | **Contatti** | Rubrica con nome e cognome separati, ordinata per cognome (clic sull'intestazione per ordinare per un'altra colonna). L'*Azienda* si sceglie da un menu che ricorda le aziende già inserite; *Consulente* e *Service manager* (con i clienti seguiti) |
 | Resoconti | **Ore** | Timer (▶ su ogni task, il timer resta visibile in alto) o inserimento a mano; totali per cliente, progetto, task e giorno; export CSV per Excel |
 | | **Riepilogo** | Settimana per settimana, anche per cliente: testo pronto per la mail o stampa |
 | | **Archivio** | Task chiusi per mese |
+
+### Comodità in tutte le sezioni
+
+- **Lista o schede**: in Contatti, Clienti, Progetti, Consulenze, Note, Modifiche, Scadenze, Attese e Riunioni il pulsante in alto a destra cambia la vista; la scelta resta su questo PC.
+- **Cliente e Azienda** si scelgono da un elenco filtrabile: se scrivi un nome che non c'è, «+ Aggiungi» lo crea al volo.
+- **Incolla immagini** (Ctrl+V) nelle note, nelle consulenze, nei verbali e nel riquadro allegati: l'immagine diventa un allegato con anteprima e nel testo resta il segnaposto `[immagine: …]`.
+- Le note e gli esiti delle attività **si allungano** man mano che scrivi (Maiusc+Invio va a capo nel titolo di un'attività).
+- **Temi**: oltre a chiaro e scuro, tre tenui (Salvia, Lavanda, Sabbia) e tre decisi (Cobalto, Corallo, Smeraldo scuro) in *Impostazioni → Tema*.
 
 ### Comandi rapidi
 

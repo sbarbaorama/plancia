@@ -2,9 +2,9 @@
 import { get, qs } from "../api.js";
 import { openDeadlineEditor } from "../editors.js";
 import { deadlineRow } from "../rows.js";
-import { addDays, clear, customerFilter, h, icon, label, loadCustomers, pageHead, select, todayISO } from "../ui.js";
+import { addDays, clear, customerFilter, h, icon, label, listOrCards, loadCustomers, pageHead, select, todayISO, viewMode, viewToggle } from "../ui.js";
 
-const state = { customer_id: "", category: "" };
+const state = { customer_id: "", category: "", view: viewMode("scadenze") };
 
 export async function render(root, ctx) {
   const customers = await loadCustomers();
@@ -25,8 +25,9 @@ export async function render(root, ctx) {
     h("div", { class: "filters" },
       customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; reload(); }),
       select("category", [["", "Tutte le categorie"], ...["certificato", "licenza", "contratto", "manutenzione", "verifica", "altro"].map((c) => [c, label(c)])], state.category,
-        { "aria-label": "Categoria", onchange: (e) => { state.category = e.target.value; reload(); } })),
+        { "aria-label": "Categoria", onchange: (e) => { state.category = e.target.value; reload(); } }),
+      h("span", { class: "spacer" }), viewToggle("scadenze", state.view, (v) => { state.view = v; reload(); })),
     groups.length ? groups.map(([title, items, cls]) => [h("div", { class: `group-title ${cls || ""}` }, `${title} · ${items.length}`),
-      h("ul", { class: "list card" }, items.map((d) => deadlineRow(d, { onChange: reload })))])
+      h("ul", { class: listOrCards(state.view) }, items.map((d) => deadlineRow(d, { onChange: reload })))])
       : h("div", { class: "card" }, h("div", { class: "empty" }, "Nessuna scadenza. Aggiungi certificati, licenze e contratti da tenere d'occhio.")));
 }
