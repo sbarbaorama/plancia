@@ -19,7 +19,8 @@ const state = { active: "1", q: "", view: viewMode("clienti", "schede") };
 function customerRow(c) {
   return h("li", { class: "item", onclick: () => { location.hash = `#/clienti/${c.id}`; } },
     h("div", { class: "cust-tile", style: { width: "36px", height: "36px", fontSize: "11px" } }, c.code || c.name.slice(0, 3).toUpperCase()),
-    h("div", { class: "main-col" }, h("div", { class: "t-title" }, c.name, !c.active ? h("span", { class: "muted small" }, " · non attivo") : null),
+    h("div", { class: "main-col" }, h("div", { class: "t-title" }, c.name, !c.active ? h("span", { class: "muted small" }, " · non attivo") : null,
+      !c.code ? [" ", badge("da completare", "warn")] : null),
       h("div", { class: "meta" }, h("span", {}, `${c.open_tasks} task`), c.open_waits ? h("span", {}, `${c.open_waits} attese`) : null,
         c.deadlines_due ? h("span", { class: "soon" }, `${c.deadlines_due} scadenze`) : null, c.projects_count ? h("span", {}, `${c.projects_count} progetti`) : null)),
     c.monthly_hours ? h("div", { class: "side-col" }, `${c.monthly_hours} h/mese`) : null);
@@ -39,6 +40,9 @@ export async function render(root, ctx) {
   clear(root,
     pageHead("Clienti", "Ogni cliente ha il suo cockpit: attività, modifiche, scadenze, attese e ore",
       h("button", { class: "btn btn-primary", type: "button", onclick: () => openCustomerEditor(null, { onSave: reload }) }, icon("plus"), "Nuovo cliente")),
+    items.some((c) => c.active && !c.code) ? h("div", { class: "banner warn" }, icon("edit"),
+      items.filter((c) => c.active && !c.code).length === 1 ? "1 cliente da completare: manca la sigla. Aprilo e premi «Completa»."
+        : `${items.filter((c) => c.active && !c.code).length} clienti da completare: manca la sigla. Aprili e premi «Completa».`) : null,
     h("div", { class: "filters" },
       h("input", { type: "search", placeholder: "Cerca cliente o sigla…", value: state.q, oninput: (e) => { state.q = e.target.value; reload(); } }),
       segmented([["1", "Attivi"], ["", "Tutti"]], state.active, (v) => { state.active = v; reload(); }, "Stato"),
@@ -48,7 +52,8 @@ export async function render(root, ctx) {
       h("a", { class: "card card-pad", href: `#/clienti/${c.id}`, style: { color: "inherit", textDecoration: "none", display: "flex", gap: "14px", alignItems: "center" } },
         h("div", { class: "cust-tile", style: { width: "48px", height: "48px", fontSize: "14px" } }, c.code || c.name.slice(0, 3).toUpperCase()),
         h("div", { style: { flex: 1, minWidth: 0 } },
-          h("div", { style: { fontWeight: 650 } }, c.name, !c.active ? h("span", { class: "muted small" }, " · non attivo") : null),
+          h("div", { style: { fontWeight: 650 } }, c.name, !c.active ? h("span", { class: "muted small" }, " · non attivo") : null,
+            !c.code ? [" ", badge("da completare", "warn")] : null),
           h("div", { class: "row small muted", style: { marginTop: "4px" } },
             h("span", {}, `${c.open_tasks} task`), c.open_waits ? h("span", {}, `${c.open_waits} attese`) : null,
             c.deadlines_due ? h("span", { class: "soon" }, `${c.deadlines_due} scadenze`) : null, c.projects_count ? h("span", {}, `${c.projects_count} progetti`) : null)))))
@@ -125,6 +130,8 @@ async function renderCockpit(root, ctx) {
   const sms = c.service_managers || [];
   clear(root,
     h("div", { class: "small muted", style: { marginBottom: "10px" } }, h("a", { href: "#/clienti" }, "Clienti"), ` / ${c.name}`),
+    !c.code ? h("div", { class: "banner warn" }, icon("edit"), h("span", { style: { flex: 1 } }, "Cliente da completare: manca la sigla (es. ACM), che compare nei chip di task, modifiche e ore."),
+      h("button", { class: "btn btn-sm", type: "button", onclick: () => openCustomerEditor(c, { onSave: (x) => x ? reload() : (location.hash = "#/clienti") }) }, "Completa")) : null,
     h("div", { class: "cust-head" },
       h("div", { class: "cust-tile" }, c.code || c.name.slice(0, 3).toUpperCase()),
       h("div", { style: { flex: "1 1 320px" } },

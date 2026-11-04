@@ -63,10 +63,24 @@ async function analyze(payload) {
   try { preview(await post("/api/import/parse", payload)); } catch (err) { showError(err); }
 }
 
+/** vCard (da Outlook o dal telefono): i contatti nuovi entrano in rubrica, quelli già presenti si saltano. */
+export async function importVcard(file) {
+  if (file.size > 2 * 1024 * 1024) { toast("Il file supera i 2 MB", "error"); return; }
+  const buf = await file.arrayBuffer();
+  let text = new TextDecoder("utf-8").decode(buf);
+  if (text.includes("\ufffd")) text = new TextDecoder("windows-1252").decode(buf); // vecchi export di Outlook
+  try {
+    const r = await post("/api/contacts/import_vcf", { content: text });
+    toast(`Rubrica: ${r.created} contatti aggiunti${r.skipped.length ? `, ${r.skipped.length} già presenti (${r.skipped.slice(0, 3).join(", ")}${r.skipped.length > 3 ? "…" : ""})` : ""}`, "ok", 6000);
+    emit("changed");
+  } catch (err) { showError(err); }
+}
+
 export async function importFile(file) {
   const ext = file.name.split(".").pop().toLowerCase();
+  if (ext === "vcf") return importVcard(file);
   if (ext === "msg") { toast("I file .msg non sono supportati: in Outlook usa «Salva con nome» → .eml", "error", 6000); return; }
-  if (!["eml", "ics"].includes(ext)) { toast("Trascina un file .eml (mail) o .ics (invito)", "error"); return; }
+  if (!["eml", "ics"].includes(ext)) { toast("Trascina un file .eml (mail), .ics (invito) o .vcf (contatti)", "error"); return; }
   if (file.size > MAX_FILE) { toast("Il file supera i 5 MB", "error"); return; }
   await analyze({ kind: ext, content_b64: toBase64(await file.arrayBuffer()) });
 }

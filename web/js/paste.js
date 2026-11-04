@@ -1,5 +1,5 @@
 // Immagini incollate (Ctrl+V) nei moduli: diventano allegati dell'elemento, con anteprima.
-import { qs, upload } from "./api.js";
+import { get, qs, upload } from "./api.js";
 import { clear, h, icon, showError, toast } from "./ui.js";
 
 const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
@@ -86,4 +86,32 @@ export function pasteImages(form, entityType, entityId) {
       }
     },
   };
+}
+
+// ------------------------------------------------------------------ immagini al posto del segnaposto
+const MARK = /\[immagine: ([^\]\n]+)\]/g;
+export const hasImageMarks = (text) => typeof text === "string" && text.includes("[immagine: ");
+
+/** Le immagini allegate a un elemento ([] se non ce ne sono o in caso di errore). */
+export async function imagesOf(entityType, entityId) {
+  try {
+    const items = await get(`/api/attachments${qs({ entity_type: entityType, entity_id: entityId })}`);
+    return items.filter((a) => a.kind === "file" && !a.missing && /^image\//.test(a.mime || ""));
+  } catch { return []; }
+}
+
+/** Testo con le immagini al posto di «[immagine: nome]». used raccoglie i nomi mostrati. */
+export function richText(text, images = [], used = new Set()) {
+  const out = [];
+  let last = 0;
+  for (const m of String(text || "").matchAll(MARK)) {
+    const img = images.find((a) => a.name === m[1].trim());
+    if (!img) continue;
+    out.push(String(text).slice(last, m.index));
+    out.push(h("img", { class: "inline-img", src: `/api/attachments/${img.id}/file`, alt: img.name }));
+    used.add(img.name);
+    last = m.index + m[0].length;
+  }
+  out.push(String(text || "").slice(last));
+  return out.filter((x) => x !== "");
 }

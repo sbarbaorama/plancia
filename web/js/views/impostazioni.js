@@ -1,10 +1,10 @@
 // Impostazioni: aspetto, giornata, notifiche, backup, dati, import da Activity Desk, team.
-import { get, post, put } from "../api.js";
-import { THEMES, applyTheme } from "../app.js";
+import { del, get, post, put } from "../api.js";
+import { BASE_THEMES, THEMES, applyTheme, previewTheme } from "../app.js";
 import { openEditor } from "../form.js";
 import {
-  avatar, badge, card, clear, confirmDialog, fmtDate, h, icon, invalidate, isAdmin, isTeam, label, loadUsers, me, pageHead, select,
-  showError, store, toast,
+  avatar, badge, card, clear, closePanel, combo, confirmDialog, fmtDate, h, icon, invalidate, isAdmin, isTeam, label, loadUsers, me,
+  onSubmitOnce, openPanel, pageHead, select, showError, store, toast,
 } from "../ui.js";
 
 export async function render(root, ctx) {
@@ -17,11 +17,19 @@ export async function render(root, ctx) {
   };
   const admin = isAdmin();
 
+  // tema: passando col mouse (o con Tab) si vede l'anteprima, il clic lo sceglie
+  const restore = () => applyTheme(store.settings, false);
+  const themeBtn = ([v, l, , sw]) => h("button", {
+    type: "button", class: `theme-opt${v === s.theme ? " on" : ""}`, "aria-pressed": String(v === s.theme),
+    onmouseenter: () => previewTheme(v), onfocus: () => previewTheme(v), onmouseleave: restore, onblur: restore,
+    onclick: () => save({ theme: v }, `Tema: ${l}`).then(reload),
+  }, h("span", { class: "theme-sw", style: { "--a": sw[0], "--b": sw[1], "--c": sw[2] } }), h("span", {}, l));
   const look = card("Aspetto", h("div", { class: "card-body form" },
+    h("div", { class: "field" }, h("span", {}, "Tema ", h("span", { class: "hint" }, "— passa sopra un tema per vederlo, fai clic per sceglierlo")),
+      ["Base", "Tenui", "Decisi"].map((g) => h("div", { class: "theme-group" }, h("div", { class: "small muted" }, g),
+        h("div", { class: "theme-grid" }, [...BASE_THEMES, ...THEMES].filter((t) => t[2] === g).map(themeBtn))))),
+    h("p", { class: "hint" }, "I temi tenui hanno anche una versione scura, usata quando Windows è in modalità scura."),
     h("div", { class: "form-row" },
-      h("label", { class: "field" }, "Tema", h("select", { name: "theme", onchange: (e) => save({ theme: e.target.value }) },
-        h("optgroup", { label: "Base" }, [["auto", "Come il sistema"], ["chiaro", "Chiaro"], ["scuro", "Scuro"]].map(([v, l]) => h("option", { value: v, selected: v === s.theme }, l))),
-        ["Tenui", "Decisi"].map((g) => h("optgroup", { label: g }, THEMES.filter((t) => t[2] === g).map(([v, l]) => h("option", { value: v, selected: v === s.theme }, l)))))),
       h("label", { class: "field" }, "Densità degli elenchi", select("density", [["comoda", "Comoda"], ["compatta", "Compatta"]], s.density, { onchange: (e) => save({ density: e.target.value }) })))));
 
   const dayForm = h("form", { class: "card-body form" },
@@ -111,7 +119,7 @@ export async function render(root, ctx) {
   clear(root,
     pageHead("Impostazioni", `Plancia ${store.session.version} · modalità ${store.session.mode}`),
     h("div", { class: "cols" },
-      h("div", { class: "col-main" }, look, card("Giornata", dayForm), notif, admin ? card("Backup", backupForm) : null),
+      h("div", { class: "col-main" }, look, card("Giornata", dayForm), notif, await companiesCard(reload), admin ? card("Backup", backupForm) : null),
       h("div", { class: "col-side" }, team, admin ? data : null, admin ? legacy : null,
         card("Scorciatoie", h("div", { class: "card-body small stack", style: { gap: "6px" } },
           h("div", {}, h("kbd", {}, "Ctrl K"), " palette: cerca, vai a, crea («task @SIGLA titolo ven»)"),
@@ -145,4 +153,39 @@ function editUser(u, reload) {
     },
     onSave: () => { invalidate("users"); reload(); }, deletable: false,
   });
+}
+
+// ------------------------------------------------------------------ aziende (menu a tendina dei contatti)
+async function companiesCard(reload) {
+  const items = await get("/api/companies").catch(() => []);
+  const done = () => { invalidate("companies", "contacts"); reload(); };
+  const rename = (c) => openEditor("companies", c, { title: "Rinomina azienda", deletable: false, onSave: done,
+    extra: () => h("p", { class: "hint" }, c.contacts_count ? `Il nuovo nome passa anche ai ${c.contacts_count} contatti di questa azienda.` : "Nessun contatto usa questa azienda.") });
+  const merge = (c) => {
+    const target = combo({ name: "into_id", id: "merge-into", options: items.filter((x) => x.id !== c.id).map((x) => [x.id, x.name, x.name]), emptyLabel: "Scegli l'azienda che resta" });
+    const form = h("form", { class: "form" },
+      h("p", {}, `I contatti di «${c.name}» (${c.contacts_count}) passano all'azienda scelta; «${c.name}» viene tolta dall'elenco.`),
+      h("div", { class: "field" }, h("label", { for: "merge-into" }, "Unisci in"), target),
+      h("div", { class: "panel-foot" }, h("button", { class: "btn btn-primary", type: "submit" }, "Unisci"),
+        h("button", { class: "btn", type: "button", onclick: () => closePanel() }, "Annulla")));
+    onSubmitOnce(form, async () => {
+      const into = form.elements.namedItem("into_id").value;
+      if (!into) { toast("Scegli l'azienda in cui unire", "error"); return; }
+      try { await post(`/api/companies/${c.id}/merge`, { into_id: Number(into) }); toast("Aziende unite", "ok"); closePanel(); done(); } catch (err) { showError(err); }
+    });
+    openPanel("Unisci aziende", form);
+  };
+  const remove = async (c) => {
+    if (!(await confirmDialog(`Togliere «${c.name}» dall'elenco delle aziende?`, { confirm: "Togli" }))) return;
+    try { await del(`/api/companies/${c.id}`); toast("Azienda tolta", "ok"); done(); } catch (err) { showError(err); }
+  };
+  return card("Aziende", h("div", { class: "card-body stack" },
+    h("p", { class: "hint" }, "L'elenco del menu «Azienda» dei contatti. Rinominando un'azienda si aggiornano i suoi contatti; i doppioni (es. «Acme» e «Acme Srl») si uniscono."),
+    items.length ? h("ul", { class: "list compact-list" }, items.map((c) => h("li", { class: "item" },
+      h("span", { class: "main-col" }, h("b", {}, c.name), h("span", { class: "small muted" }, ` · ${c.contacts_count === 1 ? "1 contatto" : `${c.contacts_count} contatti`}`)),
+      h("button", { class: "btn btn-sm", type: "button", onclick: () => rename(c) }, "Rinomina"),
+      items.length > 1 ? h("button", { class: "btn btn-sm", type: "button", onclick: () => merge(c) }, "Unisci in…") : null,
+      !c.contacts_count ? h("button", { class: "icon-btn", type: "button", "aria-label": `Togli ${c.name}`, onclick: () => remove(c) }, icon("trash")) : null)))
+      : h("div", { class: "muted small" }, "Nessuna azienda. Si aggiungono dal campo «Azienda» dei contatti."),
+    h("div", {}, h("button", { class: "btn btn-sm", type: "button", onclick: () => openEditor("companies", null, { title: "Nuova azienda", onSave: done }) }, icon("plus"), "Azienda"))));
 }

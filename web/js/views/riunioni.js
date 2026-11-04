@@ -3,7 +3,7 @@ import { del, get, post, put, qs } from "../api.js";
 import { setLeaveGuard } from "../app.js";
 import { attachmentsBox } from "../attachments.js";
 import { field, readForm } from "../form.js";
-import { pasteImages } from "../paste.js";
+import { imagesOf, pasteImages, richText } from "../paste.js";
 import { meetingRow, taskRow } from "../rows.js";
 import {
   badge, clear, confirmDialog, customerFilter, fmtDate, fmtDateTime, h, icon, isTeam, label, loadCustomers, loadProjects, loadUsers,
@@ -164,14 +164,17 @@ document.addEventListener("fullscreenchange", () => {
   document.querySelectorAll(".focus-btn .on-off").forEach((el) => { el.textContent = "Schermo intero"; });
 });
 
-function print(m, actions) {
+async function print(m, actions) {
+  const images = m.id ? await imagesOf("meetings", m.id) : [];
+  const used = new Set();
+  const rt = (t) => h("pre", {}, richText(t, images, used));
   printDoc(
     h("h1", {}, m.title),
     h("div", { class: "meta" }, [m.date ? fmtDateTime(m.date) : "", m.customer_name, m.project_name, m.series ? `Serie: ${m.series}` : ""].filter(Boolean).join(" · ")),
-    m.attendees ? [h("h2", {}, "Partecipanti"), h("pre", {}, m.attendees)] : null,
-    m.agenda ? [h("h2", {}, "Ordine del giorno"), h("pre", {}, m.agenda)] : null,
-    m.discussion ? [h("h2", {}, "Discussione"), h("pre", {}, m.discussion)] : null,
-    m.decisions ? [h("h2", {}, "Decisioni"), h("pre", {}, m.decisions)] : null,
+    m.attendees ? [h("h2", {}, "Partecipanti"), rt(m.attendees)] : null,
+    m.agenda ? [h("h2", {}, "Ordine del giorno"), rt(m.agenda)] : null,
+    m.discussion ? [h("h2", {}, "Discussione"), rt(m.discussion)] : null,
+    m.decisions ? [h("h2", {}, "Decisioni"), rt(m.decisions)] : null,
     actions.length ? [h("h2", {}, "Azioni"), h("table", {}, h("tr", {}, h("th", {}, "Azione"), h("th", {}, "Entro"), h("th", {}, "Stato")),
       actions.map((a) => h("tr", {}, h("td", {}, a.title), h("td", {}, a.due_date ? fmtDate(a.due_date, { year: true }) : ""), h("td", {}, label(a.status)))))] : null,
     m.next_meeting ? [h("h2", {}, "Prossimo incontro"), h("pre", {}, m.next_meeting)] : null);

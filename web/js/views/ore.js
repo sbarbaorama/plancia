@@ -3,10 +3,10 @@ import { del, get, qs } from "../api.js";
 import { openTimeEditor, startTimer } from "../editors.js";
 import {
   addDays, card, clear, confirmDialog, customerFilter, fmtDate, fmtHours, fmtMin, h, icon, isAdmin, isTeam, kpi, loadCustomers,
-  mondayOf, pageHead, parseISO, segmented, showError, todayISO, toISO,
+  mondayOf, pageHead, parseISO, segmented, showError, sortableTable, todayISO, toISO,
 } from "../ui.js";
 
-const state = { period: "mese", user: "me", customer_id: "" };
+const state = { period: "mese", user: "me", customer_id: "", sort: { key: "date", dir: -1 } };
 
 function range(period) {
   const t = todayISO();
@@ -56,21 +56,23 @@ export async function render(root, ctx) {
           const wd = parseISO(d).getDay();
           return h("div", { class: wd === 0 || wd === 6 ? "we" : "", style: { height: `${(perDay[d] / maxDay) * 100}%` }, title: `${fmtDate(d, { weekday: true })}: ${fmtMin(perDay[d])}` });
         })), h("div", { class: "row small muted", style: { justifyContent: "space-between" } }, h("span", {}, fmtDate(from)), h("span", {}, fmtDate(to))))),
-        card("Registrazioni", entries.length ? h("div", { class: "table-wrap" }, h("table", { class: "t" },
-          h("thead", {}, h("tr", {}, h("th", {}, "Giorno"), isTeam() && state.user === "all" ? h("th", {}, "Chi") : null, h("th", {}, "Cliente"), h("th", {}, "Task / nota"), h("th", { class: "num" }, "Tempo"), h("th"))),
-          h("tbody", {}, [...entries].reverse().map((e) => h("tr", {},
-            h("td", { class: "nowrap" }, fmtDate(e.date, { weekday: true })),
-            isTeam() && state.user === "all" ? h("td", {}, e.user_name || "") : null,
-            h("td", {}, e.customer_code ? h("span", { class: "chip" }, e.customer_code) : "—"),
-            h("td", {}, e.task_title || e.note || "—", e.task_title && e.note ? h("div", { class: "small muted" }, e.note) : null, e.started_at && !e.ended_at ? h("span", { class: "badge accent" }, "in corso") : null),
-            h("td", { class: "num" }, fmtMin(e.minutes)),
-            h("td", { class: "nowrap" },
+        card("Registrazioni", entries.length ? h("div", { class: "table-wrap" }, sortableTable({
+          items: entries, sort: state.sort, onSort: (x) => { state.sort = x; reload(); },
+          columns: [
+            { key: "date", label: "Giorno", cls: "nowrap", value: (e) => `${e.date} ${e.started_at || ""}`, cell: (e) => fmtDate(e.date, { weekday: true }) },
+            ...(isTeam() && state.user === "all" ? [{ key: "user_name", label: "Chi" }] : []),
+            { key: "customer", label: "Cliente", value: (e) => e.customer_code || e.customer_name, cell: (e) => (e.customer_code ? h("span", { class: "chip" }, e.customer_code) : "—") },
+            { key: "what", label: "Task / nota", value: (e) => e.task_title || e.note,
+              cell: (e) => [e.task_title || e.note || "—", e.task_title && e.note ? h("div", { class: "small muted" }, e.note) : null, e.started_at && !e.ended_at ? h("span", { class: "badge accent" }, "in corso") : null] },
+            { key: "minutes", label: "Tempo", cls: "num", cell: (e) => fmtMin(e.minutes) },
+            { key: "actions", label: "", sortable: false, cls: "nowrap", cell: (e) => [
               h("button", { class: "icon-btn", type: "button", "aria-label": "Modifica", onclick: () => openTimeEditor(e, { onSave: reload }) }, icon("edit")),
               h("button", { class: "icon-btn", type: "button", "aria-label": "Elimina", onclick: async () => {
                 if (!(await confirmDialog("Eliminare questa registrazione?", { confirm: "Elimina" }))) return;
                 await del(`/api/time_entries/${e.id}`).catch(showError); reload();
-              } }, icon("trash"))))))))
-          : h("div", { class: "empty" }, "Nessuna registrazione nel periodo."))),
+              } }, icon("trash"))] },
+          ],
+        })) : h("div", { class: "empty" }, "Nessuna registrazione nel periodo."))),
       h("div", { class: "col-side" },
         card("Per cliente", s.by_customer.length ? h("div", { class: "card-body stack" }, s.by_customer.map((x) => h("div", { class: "stack", style: { gap: "4px" } },
           h("div", { class: "row" }, h("span", { style: { flex: 1 } }, x.label), h("b", {}, fmtHours(x.minutes)),

@@ -34,7 +34,7 @@ export function customerCombo(name, value, customers = [], id = `f-${name}`) {
     create: async (text) => {
       const c = await post("/api/customers", { name: text });
       invalidate("customers");
-      toast(`Cliente aggiunto: ${c.name}`, "ok");
+      toast(`Cliente aggiunto: ${c.name}. Ricordati di completarne la sigla in Clienti`, "ok", 5000);
       return [c.id, customerLabel(c), c.name, c.code || "", customerLabel(c)];
     },
   });
@@ -54,10 +54,46 @@ export function companyCombo(name, value, companies = [], id = `f-${name}`) {
   });
 }
 
+/** Consulente o contatto: scrivendo "Nome Cognome" di una persona nuova la si aggiunge alla rubrica. */
+export function contactCombo(name, value, contacts = [], { consultant = false, id = `f-${name}` } = {}) {
+  const list = consultant ? contacts.filter((c) => c.is_consultant || String(c.id) === String(value)) : contacts;
+  const text = (c) => (c.company ? `${c.name} — ${c.company}` : c.name);
+  return combo({
+    name, id, value: value ?? "", emptyLabel: consultant ? "— scegli o scrivi un consulente" : "— nessun contatto",
+    createLabel: consultant ? "Aggiungi consulente" : "Aggiungi contatto",
+    options: list.map((c) => [c.id, text(c), c.name, `${c.last_name} ${c.first_name}`, text(c)]),
+    create: async (t) => {
+      const c = await post("/api/contacts", { name: t, is_consultant: consultant });
+      invalidate("contacts");
+      toast(`${consultant ? "Consulente" : "Contatto"} aggiunto in rubrica: ${c.name}`, "ok");
+      return [c.id, text(c), c.name, text(c)];
+    },
+  });
+}
+
+/** Progetto: quello nuovo nasce collegato al cliente scelto nello stesso modulo. */
+export function projectCombo(name, value, projects = [], id = `f-${name}`) {
+  const list = projects.filter((p) => p.status !== "chiuso" || String(p.id) === String(value));
+  const text = (p) => (p.customer_code ? `${p.name} (${p.customer_code})` : p.name);
+  return combo({
+    name, id, value: value ?? "", emptyLabel: "— nessun progetto", createLabel: "Aggiungi progetto",
+    options: list.map((p) => [p.id, text(p), p.name, text(p)]),
+    create: async (t, wrap) => {
+      const cid = wrap.closest("form")?.elements.namedItem("customer_id")?.value;
+      const p = await post("/api/projects", { name: t, customer_id: cid ? Number(cid) : null });
+      invalidate("projects");
+      toast(`Progetto aggiunto: ${p.name}`, "ok");
+      return [p.id, text(p), p.name, text(p)];
+    },
+  });
+}
+
 /** Crea il controllo per un campo. */
 export function widget(name, spec, value, fk = {}) {
   const common = { name, id: `f-${name}` };
   if (spec.type === "fk" && spec.options === "customers") return customerCombo(name, value, fk.customers);
+  if (spec.type === "fk" && spec.options === "contacts") return contactCombo(name, value, fk.contacts, { consultant: name === "consultant_id" });
+  if (spec.type === "fk" && spec.options === "projects") return projectCombo(name, value, fk.projects);
   switch (spec.type) {
     case "company": return companyCombo(name, value, fk.companies);
     case "longtext":
@@ -158,6 +194,7 @@ export async function openEditor(resource, item, opts = {}) {
     await resolveCombos(form);
     const data = readForm(form, used);
     if (opts.transform) Object.assign(data, opts.transform(data, form));
+    if (opts.beforeSave && !(await opts.beforeSave(data, form))) return;
     try {
       const saved = isNew ? await post(URL_OF(resource), { ...(opts.hiddenValues || {}), ...data })
         : await put(`${URL_OF(resource)}/${item.id}`, data);

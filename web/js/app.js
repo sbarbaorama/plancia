@@ -195,10 +195,23 @@ async function checkReminders() {
 // ------------------------------------------------------------------ tema, login, avvio
 /** Temi disponibili: [valore, etichetta, gruppo]. */
 export const THEMES = [
-  ["salvia", "Salvia", "Tenui"], ["lavanda", "Lavanda", "Tenui"], ["sabbia", "Sabbia", "Tenui"],
-  ["cobalto", "Cobalto", "Decisi"], ["corallo", "Corallo", "Decisi"], ["smeraldo", "Smeraldo (scuro)", "Decisi"],
+  ["salvia", "Salvia", "Tenui", ["#eef1ec", "#56806a", "#3d4a42"]],
+  ["lavanda", "Lavanda", "Tenui", ["#f3f1f6", "#7d69b0", "#4b4560"]],
+  ["sabbia", "Sabbia", "Tenui", ["#f2efe8", "#7d6e52", "#4a443b"]],
+  ["cobalto", "Cobalto", "Decisi", ["#e9effb", "#1f4fe0", "#0a1d52"]],
+  ["corallo", "Corallo", "Decisi", ["#fff3ec", "#d9412a", "#3a1230"]],
+  ["smeraldo", "Smeraldo (scuro)", "Decisi", ["#0f1714", "#0d9467", "#08100d"]],
 ];
-export function applyTheme(settings) {
+export const BASE_THEMES = [
+  ["auto", "Come il sistema", "Base", ["#f3f4f1", "#0f766e", "#11151c"]],
+  ["chiaro", "Chiaro", "Base", ["#f3f4f1", "#0f766e", "#17202e"]],
+  ["scuro", "Scuro", "Base", ["#11151c", "#3fb8a9", "#0c1016"]],
+];
+/** Mostra un tema senza salvarlo (anteprima in Impostazioni). */
+export function previewTheme(t) {
+  applyTheme({ ...(store.settings || {}), theme: t }, false);
+}
+export function applyTheme(settings, persist = true) {
   const root = document.documentElement;
   const t = settings.theme;
   const named = { chiaro: "light", scuro: "dark" };
@@ -206,7 +219,7 @@ export function applyTheme(settings) {
   else if (THEMES.some(([k]) => k === t)) root.dataset.theme = t;
   else delete root.dataset.theme;
   root.dataset.density = settings.density || "comoda";
-  try { localStorage.setItem("plancia-theme", t); localStorage.setItem("plancia-density", root.dataset.density); } catch { /* */ }
+  if (persist) try { localStorage.setItem("plancia-theme", t); localStorage.setItem("plancia-density", root.dataset.density); } catch { /* */ }
 }
 
 async function logout() {

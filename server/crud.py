@@ -511,6 +511,27 @@ def _update(conn, table, item_id, record):
     conn.execute(f"UPDATE {table} SET {sets} WHERE id = ?", [*record.values(), item_id])
 
 
+def _company_renamed(conn, old_name, new_name):
+    """Rinominando un'azienda si aggiornano anche i contatti che la usano."""
+    if old_name and new_name and old_name != new_name:
+        conn.execute("UPDATE contacts SET company = ?, updated_at = ? WHERE casefold(company) = casefold(?)",
+                     (new_name, now_iso(), old_name))
+
+
+def merge_companies(conn, source_id, target_id):
+    """Unisce due aziende: i contatti della prima passano alla seconda, che resta."""
+    source_id, target_id = as_int(source_id, "Azienda"), as_int(target_id, "Azienda")
+    if source_id == target_id:
+        raise ValidationError("Scegli un'azienda diversa")
+    with transaction(conn):
+        src = get_item(conn, "companies", source_id)
+        dst = get_item(conn, "companies", target_id)
+        conn.execute("UPDATE contacts SET company = ?, updated_at = ? WHERE casefold(company) = casefold(?)",
+                     (dst["name"], now_iso(), src["name"]))
+        conn.execute("DELETE FROM companies WHERE id = ?", (source_id,))
+        return get_item(conn, "companies", target_id)
+
+
 def create_item(conn, resource, data, ctx=LOCAL, *, internal=False):
     res = check(resource)
     if res.no_create and not internal:
@@ -568,6 +589,8 @@ def update_item(conn, resource, item_id, data, ctx=LOCAL):
         record = _finalize(conn, resource, record, old)
         record["updated_at"] = now_iso()
         _update(conn, resource, current["id"], record)
+        if resource == "companies" and "name" in record:
+            _company_renamed(conn, old["name"], record["name"])
         if resource == "contacts" and ("sm_customer_ids" in data or "is_service_manager" in record):
             sm = record.get("is_service_manager", old.get("is_service_manager"))
             _set_sm_customers(conn, current["id"], data.get("sm_customer_ids"), sm, keep="sm_customer_ids" not in data)
@@ -592,6 +615,8 @@ def delete_item(conn, resource, item_id, ctx=LOCAL):
         old = dict(conn.execute(f"SELECT * FROM {resource} WHERE id = ?", (current["id"],)).fetchone())
         can_write(conn, res, old, ctx)
         customer = None if resource == "customers" else customer_of(conn, res, current["id"])
+        if resource == "companies" and current.get("contacts_count"):
+            raise ValidationError(f"«{current['name']}» è usata da {current['contacts_count']} contatti: uniscila a un'altra azienda invece di eliminarla")
         if resource == "tasks":
             cons = conn.execute("SELECT id FROM consultations WHERE task_id = ?", (current["id"],)).fetchone()
             if cons:

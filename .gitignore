@@ -1,0 +1,5 @@
+# File generati: non vanno nel repository
+__pycache__/
+*.pyc
+data/
+backups/
