@@ -1,0 +1,20 @@
+{
+  "name": "Plancia",
+  "short_name": "Plancia",
+  "description": "Il cruscotto del lavoro quotidiano su più clienti",
+  "start_url": "/#/oggi",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f1",
+  "theme_color": "#17202e",
+  "lang": "it",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "shortcuts": [
+    { "name": "Pianifica la giornata", "url": "/#/pianifica" },
+    { "name": "Task", "url": "/#/task" }
+  ]
+}
