@@ -72,6 +72,7 @@ def import_data(conn, data) -> dict:
                     raise ValidationError(f"Export non valido ({table}): {e}")
                 n += 1
             counts[table] = n
+        crud.sync_contacts(conn)
         for row in data.get("settings") or []:
             if isinstance(row, dict) and row.get("key") in ops.PUBLIC_SETTINGS:
                 conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",

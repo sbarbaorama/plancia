@@ -1,11 +1,13 @@
 // Consulenze: giornate con i consulenti, per giornata o per consulente; rapportino, riepilogo, duplica.
 import { get, qs } from "../api.js";
 import { consultationText, openConsultationEditor, printConsultation } from "../editors.js";
+import { consultationRow } from "../rows.js";
 import {
   addDays, badge, clear, copyText, customerChip, customerFilter, fmtDate, h, icon, loadCustomers, mondayOf, pageHead, segmented, todayISO,
+  viewMode, viewToggle,
 } from "../ui.js";
 
-const state = { mode: "giornata", customer_id: "" };
+const state = { mode: "giornata", customer_id: "", view: viewMode("consulenze", "schede") };
 
 export async function render(root, ctx) {
   const customers = await loadCustomers();
@@ -26,7 +28,9 @@ export async function render(root, ctx) {
     h("div", { class: "row" },
       h("button", { class: "btn btn-sm", type: "button", onclick: async (e) => { e.stopPropagation(); printConsultation(await get(`/api/consultations/${c.id}`)); } }, icon("print"), "Rapportino"),
       h("button", { class: "btn btn-sm", type: "button", onclick: async (e) => { e.stopPropagation(); copyText(consultationText(await get(`/api/consultations/${c.id}`))); } }, icon("copy"), "Riepilogo")));
-  const grid = (list) => h("div", { class: "grid", style: { gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" } }, list.map(tile));
+  const grid = (list) => state.view === "lista"
+    ? h("ul", { class: "list card" }, list.map((c) => consultationRow(c, { onChange: reload })))
+    : h("div", { class: "grid", style: { gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" } }, list.map(tile));
   let body;
   if (state.mode === "giornata") {
     const mon = mondayOf(todayISO()), sun = addDays(mon, 6);
@@ -47,6 +51,7 @@ export async function render(root, ctx) {
       h("button", { class: "btn btn-primary", type: "button", onclick: () => openConsultationEditor(null, { onSave: reload, prefill: { customer_id: state.customer_id || null } }) }, icon("plus"), "Nuova consulenza")),
     h("div", { class: "filters" },
       segmented([["giornata", "Per giornata"], ["consulente", "Per consulente"]], state.mode, (v) => { state.mode = v; reload(); }, "Raggruppa"),
-      customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; reload(); })),
+      customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; reload(); }),
+      h("span", { class: "spacer" }), viewToggle("consulenze", state.view, (v) => { state.view = v; reload(); })),
     body);
 }

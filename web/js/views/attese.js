@@ -2,9 +2,9 @@
 import { get, qs } from "../api.js";
 import { openWaitingEditor } from "../editors.js";
 import { waitRow } from "../rows.js";
-import { addDays, clear, customerFilter, h, icon, loadCustomers, pageHead, todayISO } from "../ui.js";
+import { addDays, clear, customerFilter, h, icon, listOrCards, loadCustomers, pageHead, todayISO, viewMode, viewToggle } from "../ui.js";
 
-const state = { customer_id: "" };
+const state = { customer_id: "", view: viewMode("attese") };
 
 export async function render(root, ctx) {
   const customers = await loadCustomers();
@@ -23,8 +23,9 @@ export async function render(root, ctx) {
   clear(root,
     pageHead("In attesa di", "Ticket aperti presso fornitori e risposte da ricevere. «Sollecita» sposta il prossimo sollecito di 3 giorni lavorativi",
       h("button", { class: "btn btn-primary", type: "button", onclick: () => openWaitingEditor(null, { onSave: reload, prefill: { customer_id: state.customer_id || null } }) }, icon("plus"), "Nuova attesa")),
-    h("div", { class: "filters" }, customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; reload(); })),
+    h("div", { class: "filters" }, customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; reload(); }),
+      h("span", { class: "spacer" }), viewToggle("attese", state.view, (v) => { state.view = v; reload(); })),
     groups.length ? groups.map(([title, items, cls]) => [h("div", { class: `group-title ${cls || ""}` }, `${title} · ${items.length}`),
-      h("ul", { class: "list card" }, items.map((w) => waitRow(w, { onChange: reload })))])
+      h("ul", { class: listOrCards(state.view) }, items.map((w) => waitRow(w, { onChange: reload })))])
       : h("div", { class: "card" }, h("div", { class: "empty" }, "Niente in sospeso.")));
 }

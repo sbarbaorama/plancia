@@ -1,12 +1,13 @@
 // Moduli generici: costruiti dalla descrizione delle risorse che manda il server (/api/schema).
 import { del, post, put } from "./api.js";
 import { attachmentsBox } from "./attachments.js";
+import { pasteImages } from "./paste.js";
 import {
-  autoGrow, closePanel, confirmDialog, h, isTeam, label, loadContacts, loadCustomers, loadProjects, loadUsers, onSubmitOnce,
-  openPanel, showError, store, toast, invalidate,
+  autoGrow, closePanel, combo, confirmDialog, h, isTeam, label, loadCompanies, loadContacts, loadCustomers, loadProjects, loadUsers, onSubmitOnce,
+  openPanel, resolveCombos, showError, store, toast, invalidate,
 } from "./ui.js";
 
-const FK_LOADERS = { customers: loadCustomers, projects: loadProjects, users: loadUsers, contacts: loadContacts };
+const FK_LOADERS = { customers: loadCustomers, projects: loadProjects, users: loadUsers, contacts: loadContacts, companies: loadCompanies };
 const TEAM_ONLY = new Set(["visibility", "assignee_id"]);
 const URL_OF = (res) => `/api/${res}`;
 
@@ -22,10 +23,43 @@ function fkOptions(target, items, value, field) {
   return [["", target === "users" ? "Nessuno" : "—"], ...list.map((x) => [x.id, text(x)])];
 }
 
+const customerLabel = (c) => (c.code ? `${c.code} · ${c.name}` : c.name);
+
+/** Cliente: si sceglie dall'elenco oppure si scrive il nome di uno nuovo e si aggiunge. */
+export function customerCombo(name, value, customers = [], id = `f-${name}`) {
+  const list = customers.filter((c) => c.active || String(c.id) === String(value));
+  return combo({
+    name, id, value: value ?? "", emptyLabel: "— nessun cliente", createLabel: "Aggiungi cliente",
+    options: list.map((c) => [c.id, customerLabel(c), c.name, c.code || "", customerLabel(c)]),
+    create: async (text) => {
+      const c = await post("/api/customers", { name: text });
+      invalidate("customers");
+      toast(`Cliente aggiunto: ${c.name}`, "ok");
+      return [c.id, customerLabel(c), c.name, c.code || "", customerLabel(c)];
+    },
+  });
+}
+
+/** Azienda: testo libero con l'elenco delle aziende salvate. */
+export function companyCombo(name, value, companies = [], id = `f-${name}`) {
+  return combo({
+    name, id, value: value ?? "", freeText: true, placeholder: "Scegli o scrivi un'azienda", createLabel: "Aggiungi azienda",
+    options: companies.map((c) => [c.name, c.name, c.name]),
+    create: async (text) => {
+      const c = await post("/api/companies", { name: text });
+      invalidate("companies");
+      toast(`Azienda aggiunta: ${c.name}`, "ok");
+      return [c.name, c.name, c.name];
+    },
+  });
+}
+
 /** Crea il controllo per un campo. */
 export function widget(name, spec, value, fk = {}) {
   const common = { name, id: `f-${name}` };
+  if (spec.type === "fk" && spec.options === "customers") return customerCombo(name, value, fk.customers);
   switch (spec.type) {
+    case "company": return companyCombo(name, value, fk.companies);
     case "longtext":
       return autoGrow(h("textarea", { ...common, rows: name === "command" ? 3 : 4, value: value ?? "", class: name === "command" ? "mono" : "" }));
     case "enum":
@@ -50,6 +84,7 @@ export function widget(name, spec, value, fk = {}) {
 export function field(name, spec, value, fk) {
   const w = widget(name, spec, value, fk);
   if (spec.type === "bool") return h("label", { class: "check" }, w, spec.label);
+  if (w.classList.contains("combo")) return h("div", { class: "field" }, h("label", { for: `f-${name}` }, spec.label), w);
   return h("label", { class: "field", for: w.id }, spec.label, w);
 }
 
@@ -70,6 +105,7 @@ export function readForm(form, fields) {
 
 async function fkData(fields) {
   const needed = new Set(Object.values(fields).filter((s) => s.type === "fk").map((s) => s.options));
+  if (Object.values(fields).some((s) => s.type === "company")) needed.add("companies");
   const fk = {};
   await Promise.all([...needed].filter((t) => FK_LOADERS[t]).map(async (t) => { fk[t] = await FK_LOADERS[t]().catch(() => []); }));
   return fk;
@@ -96,6 +132,7 @@ export async function openEditor(resource, item, opts = {}) {
   }
   const extraNodes = opts.extra ? await opts.extra(values, form, isNew) : null;
   if (extraNodes) form.append(...[extraNodes].flat().filter(Boolean));
+  const pasted = schema.attachments ? pasteImages(form, resource, isNew ? null : item.id) : null;
   if (!isNew && schema.attachments) form.append(attachmentsBox(resource, item.id));
   const foot = h("div", { class: "panel-foot" },
     h("button", { class: "btn btn-primary", type: "submit" }, isNew ? `Crea` : "Salva"),
@@ -118,12 +155,14 @@ export async function openEditor(resource, item, opts = {}) {
   form.append(foot);
   form.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); } });
   onSubmitOnce(form, async () => {
+    await resolveCombos(form);
     const data = readForm(form, used);
     if (opts.transform) Object.assign(data, opts.transform(data, form));
     try {
       const saved = isNew ? await post(URL_OF(resource), { ...(opts.hiddenValues || {}), ...data })
         : await put(`${URL_OF(resource)}/${item.id}`, data);
       if (opts.afterSave) await opts.afterSave(saved, isNew, form);
+      if (isNew && pasted && saved?.id) await pasted.flush(saved.id);
       invalidateFor(resource);
       toast(isNew ? `Creato: ${schema.label.toLowerCase()}` : "Salvato", "ok");
       if (saved?.freezes?.length) toast(`Attenzione: data in un periodo di blocco (${saved.freezes.map((f) => f.title).join(", ")})`, "warn", 6000);
@@ -138,6 +177,7 @@ export async function openEditor(resource, item, opts = {}) {
 export function invalidateFor(resource) {
   if (resource === "customers") invalidate("customers");
   if (resource === "projects") invalidate("projects");
-  if (resource === "contacts") invalidate("contacts");
+  if (resource === "contacts") invalidate("contacts", "companies");
+  if (resource === "companies") invalidate("companies");
   if (resource === "users") invalidate("users");
 }

@@ -82,6 +82,23 @@ class CrudTest(Base):
         c = crud.update_item(self.conn, "contacts", c["id"], {"is_service_manager": False})
         self.assertEqual(c["sm_customers"], [])
 
+    def test_contact_first_last_name_and_companies(self):
+        c = crud.create_item(self.conn, "contacts", {"first_name": "Mario", "last_name": "Rossi", "company": "Acme Srl"})
+        self.assertEqual(c["name"], "Mario Rossi")
+        self.assertEqual([x["name"] for x in crud.list_items(self.conn, "companies")], ["Acme Srl"])
+        c = crud.update_item(self.conn, "contacts", c["id"], {"last_name": "Bianchi", "company": "acme srl"})
+        self.assertEqual(c["name"], "Mario Bianchi")
+        self.assertEqual(len(crud.list_items(self.conn, "companies")), 1)  # stessa azienda, maiuscole diverse
+        # solo il nome completo (versioni precedenti, importazioni): si divide
+        d = crud.create_item(self.conn, "contacts", {"name": "Anna Maria Verdi"})
+        self.assertEqual((d["first_name"], d["last_name"]), ("Anna", "Maria Verdi"))
+        crud.create_item(self.conn, "contacts", {"first_name": "Zeno", "last_name": "Abate"})
+        self.assertEqual([x["last_name"] for x in crud.list_items(self.conn, "contacts")], ["Abate", "Bianchi", "Maria Verdi"])
+        with self.assertRaises(crud.ValidationError):
+            crud.create_item(self.conn, "contacts", {"first_name": " ", "last_name": ""})
+        with self.assertRaises(crud.ValidationError):
+            crud.create_item(self.conn, "companies", {"name": "ACME SRL"})
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])

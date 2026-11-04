@@ -82,6 +82,8 @@ const P = {
   mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/>',
   collapse: '<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+  list: '<path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+  cards: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
   team: '<circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 20a6 6 0 0 1 12 0M14 20a5 5 0 0 1 8-3.5"/>',
 };
 export function icon(name, cls = "") {
@@ -229,7 +231,7 @@ export function initials(name) {
 }
 
 // ------------------------------------------------------------------ stato condiviso
-export const store = { schema: null, session: null, settings: null, customers: null, projects: null, users: null, contacts: null };
+export const store = { schema: null, session: null, settings: null, customers: null, projects: null, users: null, contacts: null, companies: null };
 export const isTeam = () => store.session?.mode === "team";
 export const me = () => store.session?.user || { id: 1, name: "Io", role: "admin" };
 export const isAdmin = () => !isTeam() || me().role === "admin";
@@ -319,9 +321,23 @@ export function debounce(fn, ms = 250) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
+/** La casella di testo si allunga con il contenuto (anche dopo che compare a schermo). */
 export function autoGrow(ta) {
-  const fit = () => { ta.style.height = "auto"; ta.style.height = `${Math.min(600, ta.scrollHeight + 2)}px`; };
+  const fit = () => {
+    if (!ta.isConnected || !ta.offsetParent) return;
+    const top = ta.closest(".panel-body, .main") ;
+    const keep = top ? top.scrollTop : 0;
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight + 2}px`;
+    if (top) top.scrollTop = keep;
+  };
+  ta.classList.add("autogrow");
   ta.addEventListener("input", fit);
+  ta.addEventListener("focus", fit);
+  if (typeof ResizeObserver !== "undefined") {
+    let lastW = 0;
+    new ResizeObserver(() => { if (ta.offsetWidth && ta.offsetWidth !== lastW) { lastW = ta.offsetWidth; fit(); } }).observe(ta);
+  }
   requestAnimationFrame(fit);
   return ta;
 }
@@ -350,4 +366,150 @@ export function printDoc(...nodes) {
 }
 export function mailto(to, subject, body = "") {
   return `mailto:${encodeURIComponent(to || "")}?subject=${encodeURIComponent(subject || "")}&body=${encodeURIComponent(body)}`;
+}
+
+// ------------------------------------------------------------------ campo con elenco e "Aggiungi"
+/**
+ * Casella con menu a tendina filtrabile; se la voce non esiste si può aggiungere.
+ * options: [[valore, etichetta, ...altre parole che la identificano]].
+ * freeText: il valore è il testo stesso (es. Azienda); altrimenti un id in un campo nascosto (es. Cliente).
+ * create(testo) → Promise<[valore, etichetta]> crea la voce nuova.
+ */
+export function combo({ name, id, options = [], value = "", placeholder = "", freeText = false, create = null, createLabel = "Aggiungi", emptyLabel = "" }) {
+  const norm = (s) => String(s ?? "").trim().toLocaleLowerCase("it");
+  let opts = options.filter(([v]) => v !== "" && v !== null && v !== undefined);
+  const labelOf = (v) => opts.find(([x]) => String(x) === String(v))?.[1] ?? "";
+  const hidden = freeText ? null : h("input", { type: "hidden", name, value: value ?? "" });
+  const input = h("input", {
+    type: "text", id, name: freeText ? name : null, value: freeText ? (value ?? "") : labelOf(value), placeholder: placeholder || emptyLabel,
+    autocomplete: "off", maxlength: 300, role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false",
+  });
+  const list = h("div", { class: "combo-list", role: "listbox", hidden: true });
+  const toggle = h("button", { class: "combo-btn", type: "button", tabindex: "-1", "aria-label": "Mostra l'elenco" }, icon("down"));
+  const wrap = h("div", { class: "combo" }, input, toggle, list, hidden);
+  let active = -1, shown = [];
+
+  const exact = (text) => opts.find((o) => o.slice(1).some((k) => norm(k) === norm(text)));
+  const setValue = (v, l) => {
+    input.value = l;
+    if (hidden && hidden.value !== String(v ?? "")) {
+      hidden.value = v ?? "";
+      hidden.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (freeText) input.dispatchEvent(new Event("change", { bubbles: true }));
+    close();
+  };
+  const close = () => { list.hidden = true; input.setAttribute("aria-expanded", "false"); active = -1; };
+  function draw(all = false) {
+    const q = all ? "" : norm(input.value);
+    shown = opts.filter((o) => !q || o.slice(1).some((k) => norm(k).includes(q))).slice(0, 80).map((o) => ({ o }));
+    const text = input.value.trim();
+    if (create && text && !exact(text)) shown.push({ create: text });
+    clear(list, shown.length ? shown.map((s, i) => h("div", {
+      class: `combo-opt${s.create ? " create" : ""}${i === active ? " on" : ""}`, role: "option",
+      onmousedown: (e) => { e.preventDefault(); pick(i); },
+    }, s.create ? [icon("plus"), `${createLabel} «${s.create}»`] : s.o[1])) : h("div", { class: "combo-empty" }, "Nessuna voce"));
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+  async function pick(i) {
+    const s = shown[i];
+    if (!s) return;
+    if (s.o) return setValue(s.o[0], s.o[1]);
+    await add(s.create);
+  }
+  async function add(text) {
+    try {
+      const made = await create(text);
+      if (!made) return;
+      opts = [...opts, made];
+      setValue(made[0], made[1]);
+    } catch (err) { showError(err); }
+  }
+  input.addEventListener("input", () => { active = -1; draw(); if (hidden && !input.value.trim()) setValue("", ""); });
+  input.addEventListener("focus", () => draw(true));
+  input.addEventListener("blur", () => setTimeout(() => {
+    close();
+    const m = exact(input.value);
+    if (m) setValue(m[0], m[1]);
+  }, 120));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (list.hidden) draw(true);
+      active = Math.max(0, Math.min(shown.length - 1, active + (e.key === "ArrowDown" ? 1 : -1)));
+      [...list.children].forEach((el, i) => el.classList.toggle("on", i === active));
+      list.children[active]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && !list.hidden && (active >= 0 || shown.length === 1)) {
+      e.preventDefault();
+      pick(active >= 0 ? active : 0);
+    } else if (e.key === "Escape" && !list.hidden) {
+      e.stopPropagation();
+      close();
+    }
+  });
+  toggle.addEventListener("click", () => { if (list.hidden) { input.focus(); draw(true); } else close(); });
+  /** Prima di salvare: il testo scritto senza sceglierlo dall'elenco diventa una voce nuova. */
+  wrap.resolve = async () => {
+    const text = input.value.trim();
+    if (freeText || !text) return;
+    const m = exact(text);
+    if (m) { setValue(m[0], m[1]); return; }
+    if (create && await confirmDialog(`«${text}» non è nell'elenco: aggiungerlo?`, { confirm: createLabel, danger: false })) await add(text);
+  };
+  return wrap;
+}
+export async function resolveCombos(form) {
+  for (const c of form.querySelectorAll(".combo")) if (c.resolve) await c.resolve();
+}
+export const loadCompanies = cached("companies", "/api/companies");
+
+// ------------------------------------------------------------------ vista a lista o a schede
+const VIEW_KEY = (k) => `plancia-view-${k}`;
+/** Vista scelta per una sezione ("lista" o "schede"), ricordata su questo PC. */
+export function viewMode(key, fallback = "lista") {
+  try { return localStorage.getItem(VIEW_KEY(key)) || fallback; } catch { return fallback; }
+}
+export function viewToggle(key, value, onchange) {
+  const set = (v) => { try { localStorage.setItem(VIEW_KEY(key), v); } catch { /* */ } onchange(v); };
+  const wrap = h("div", { class: "segmented view-toggle", role: "group", "aria-label": "Vista" });
+  for (const [v, ic, l] of [["lista", "list", "Lista"], ["schede", "cards", "Schede"]]) {
+    wrap.append(h("button", { type: "button", class: v === value ? "on" : "", "aria-pressed": String(v === value), title: `Vista a ${l.toLowerCase()}`, onclick: () => set(v) }, icon(ic), l));
+  }
+  return wrap;
+}
+/** Elenco di righe (li.item) mostrato come lista o come griglia di schede. */
+export function listOrCards(mode, cls = "list card") {
+  return mode === "schede" ? "list as-cards" : cls;
+}
+
+// ------------------------------------------------------------------ tabella ordinabile
+/**
+ * columns: [{ key, label, value(item) → valore per l'ordinamento, cell(item) → contenuto, cls, sortable }]
+ * sort: { key, dir } (dir 1 = crescente, -1 = decrescente); onSort(nuovoSort).
+ */
+export function sortItems(items, columns, sort) {
+  const col = columns.find((c) => c.key === sort.key) || columns[0];
+  const val = col.value || ((x) => x[col.key]);
+  const coll = new Intl.Collator("it", { sensitivity: "base", numeric: true });
+  return [...items].sort((a, b) => {
+    const x = val(a), y = val(b);
+    const ex = x === null || x === undefined || x === "", ey = y === null || y === undefined || y === "";
+    if (ex || ey) return ex === ey ? 0 : ex ? 1 : -1; // i vuoti sempre in fondo
+    const r = typeof x === "number" && typeof y === "number" ? x - y : coll.compare(String(x), String(y));
+    return r * sort.dir;
+  });
+}
+export function sortableTable({ columns, items, sort, onSort, onRow }) {
+  const head = columns.map((c) => {
+    if (c.sortable === false) return h("th", { class: c.cls || "" }, c.label);
+    const on = sort.key === c.key;
+    return h("th", { class: `${c.cls || ""} sortable${on ? " on" : ""}`, "aria-sort": on ? (sort.dir > 0 ? "ascending" : "descending") : "none" },
+      h("button", { type: "button", class: "th-sort", onclick: () => onSort({ key: c.key, dir: on ? -sort.dir : 1 }) },
+        c.label, h("span", { class: "arrow", "aria-hidden": "true" }, on ? (sort.dir > 0 ? "▲" : "▼") : "↕")));
+  });
+  return h("table", { class: "t" },
+    h("thead", {}, h("tr", {}, head)),
+    h("tbody", {}, sortItems(items, columns, sort).map((it) => h("tr", { style: onRow ? { cursor: "pointer" } : null, onclick: onRow ? () => onRow(it) : null },
+      columns.map((c) => h("td", { class: c.cls || "" }, c.cell ? c.cell(it) : it[c.key] ?? ""))))));
 }
