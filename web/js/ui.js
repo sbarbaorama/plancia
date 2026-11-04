@@ -356,12 +356,15 @@ export function onSubmitOnce(form, fn) {
   });
 }
 /** Stampa un documento preparato (verbale, rapportino…). */
-export function printDoc(...nodes) {
+export async function printDoc(...nodes) {
   const doc = document.getElementById("print-doc");
   clear(doc, nodes);
   document.body.classList.add("printing");
   const done = () => { document.body.classList.remove("printing"); window.removeEventListener("afterprint", done); };
   window.addEventListener("afterprint", done);
+  // aspetta le immagini (al massimo 4 secondi) prima di aprire la stampa
+  await Promise.all([...doc.querySelectorAll("img")].map((img) => img.complete ? null
+    : new Promise((r) => { img.addEventListener("load", r); img.addEventListener("error", r); setTimeout(r, 4000); })));
   setTimeout(() => window.print(), 50);
 }
 export function mailto(to, subject, body = "") {
@@ -420,7 +423,7 @@ export function combo({ name, id, options = [], value = "", placeholder = "", fr
   }
   async function add(text) {
     try {
-      const made = await create(text);
+      const made = await create(text, wrap);
       if (!made) return;
       opts = [...opts, made];
       setValue(made[0], made[1]);

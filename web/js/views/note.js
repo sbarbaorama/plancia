@@ -1,10 +1,19 @@
 // Note: bacheca di post-it colorati, con comandi copiabili (libreria di comandi Linux, query…).
 import { get, post, put, qs } from "../api.js";
 import { noteToTask, openNoteEditor } from "../editors.js";
+import { hasImageMarks, imagesOf, richText } from "../paste.js";
 import { badge, clear, copyText, customerChip, customerFilter, h, icon, loadCustomers, pageHead, showError, toast, viewMode, viewToggle } from "../ui.js";
 
 const state = { customer_id: "", commands: false, q: "", view: viewMode("note", "schede") };
 const NOTE_DOT = { giallo: "#f2d24b", verde: "#6cc08b", blu: "#6f9be8", rosa: "#ec8fb0", viola: "#a98be6", arancio: "#f2a25e" };
+
+/** Nel post-it le immagini incollate compaiono al posto del segnaposto (caricate dopo). */
+function withImages(el, n) {
+  if (n.attachments_count && hasImageMarks(n.body)) {
+    imagesOf("sticky_notes", n.id).then((imgs) => { if (imgs.length) { el.classList.add("has-img"); clear(el, richText(n.body, imgs)); } });
+  }
+  return el;
+}
 
 export async function render(root, ctx) {
   const customers = await loadCustomers();
@@ -27,7 +36,7 @@ export async function render(root, ctx) {
     h("div", { class: "row" }, n.title ? h("h3", { style: { flex: 1 } }, n.title) : h("span", { class: "spacer" }),
       h("button", { class: "icon-btn", type: "button", title: n.pinned ? "Togli dall'alto" : "Fissa in alto", "aria-label": n.pinned ? "Togli dall'alto" : "Fissa in alto",
         style: { color: n.pinned ? "#0b5953" : "#556072" }, onclick: async (e) => { e.stopPropagation(); await put(`/api/sticky_notes/${n.id}`, { pinned: !n.pinned }).catch(showError); reload(); } }, icon("pin"))),
-    n.body ? h("div", { class: "body" }, n.body) : null,
+    n.body ? withImages(h("div", { class: "body" }, n.body), n) : null,
     n.command ? h("div", { class: "cmd" }, n.command) : null,
     h("div", { class: "foot" }, customerChip(n), n.project_name ? h("span", { class: "small" }, n.project_name) : null, h("span", { class: "spacer" }),
       n.command ? h("button", { class: "btn btn-sm", type: "button", onclick: (e) => { e.stopPropagation(); copyText(n.command, e.currentTarget); } }, icon("copy"), "Comando") : null,

@@ -1,8 +1,9 @@
 // Contatti: rubrica con consulenti e service manager. Lista ordinabile per colonna oppure schede.
 import { get, qs } from "../api.js";
 import { openContactEditor } from "../editors.js";
+import { importVcard } from "../importa.js";
 import {
-  avatar, badge, clear, customerChip, customerFilter, h, icon, loadCustomers, pageHead, segmented, sortableTable, sortItems, viewMode, viewToggle,
+  avatar, badge, clear, customerChip, customerFilter, h, icon, loadCustomers, pageHead, popMenu, segmented, sortableTable, sortItems, viewMode, viewToggle,
 } from "../ui.js";
 
 const state = { customer_id: "", kind: "", q: "", sort: { key: "last_name", dir: 1 }, view: viewMode("contatti") };
@@ -32,6 +33,7 @@ export async function render(root, ctx) {
   const items = await get(`/api/contacts${qs(f)}`);
   if (!ctx.isCurrent()) return;
   const reload = () => render(root, ctx);
+  const vcfInput = h("input", { type: "file", accept: ".vcf,text/vcard", hidden: true, onchange: async (e) => { if (e.target.files[0]) { await importVcard(e.target.files[0]); reload(); } } });
   const open = (c) => openContactEditor(c, { onSave: reload });
 
   const cardOf = (c) => h("article", { class: "card card-pad contact-card", onclick: () => open(c) },
@@ -63,6 +65,12 @@ export async function render(root, ctx) {
 
   clear(root,
     pageHead("Contatti", "Rubrica: la spunta «Consulente» li rende disponibili per le consulenze, «Service manager» li collega ai clienti che seguono",
+      vcfInput,
+      h("button", { class: "btn", type: "button", onclick: (e) => popMenu(e.currentTarget, [
+        ["Esporta per Excel (CSV)", "download", () => { location.href = "/api/contacts/export.csv"; }],
+        ["Esporta per Outlook (vCard)", "download", () => { location.href = "/api/contacts/export.vcf"; }],
+        ["Importa vCard (.vcf)…", "upload", () => vcfInput.click()],
+      ]) }, icon("download"), "Esporta / importa"),
       h("button", { class: "btn btn-primary", type: "button", onclick: () => openContactEditor(null, { onSave: reload, prefill: { customer_id: state.customer_id || null } }) }, icon("plus"), "Nuovo contatto")),
     h("div", { class: "filters" },
       h("input", { type: "search", placeholder: "Cerca nome, cognome, azienda, email…", value: state.q, onchange: (e) => { state.q = e.target.value; reload(); } }),

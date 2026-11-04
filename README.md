@@ -52,10 +52,14 @@ Activity Desk e Plancia usano porte diverse (8765 e 8770): possono convivere fin
 ### Comodità in tutte le sezioni
 
 - **Lista o schede**: in Contatti, Clienti, Progetti, Consulenze, Note, Modifiche, Scadenze, Attese e Riunioni il pulsante in alto a destra cambia la vista; la scelta resta su questo PC.
-- **Cliente e Azienda** si scelgono da un elenco filtrabile: se scrivi un nome che non c'è, «+ Aggiungi» lo crea al volo.
-- **Incolla immagini** (Ctrl+V) nelle note, nelle consulenze, nei verbali e nel riquadro allegati: l'immagine diventa un allegato con anteprima e nel testo resta il segnaposto `[immagine: …]`.
+- **Cliente, Azienda, Progetto, Consulente e Contatto** si scelgono da un elenco filtrabile: se scrivi un nome che non c'è, «+ Aggiungi» lo crea al volo (il progetto nuovo nasce collegato al cliente del modulo, il consulente nuovo entra in rubrica con la spunta «Consulente»). I clienti creati così sono segnati «da completare» finché non hanno la sigla.
+- **Aziende** (*Impostazioni → Aziende*): rinomina (si aggiornano anche i contatti), unisci i doppioni, togli quelle non usate.
+- **Contatti doppi**: se salvi una persona con lo stesso nome e cognome (o la stessa email) di una già in rubrica, Plancia chiede conferma.
+- **Rubrica ↔ Outlook**: in Contatti, *Esporta / importa* scarica la rubrica in CSV (Excel) o vCard; trascinando un file `.vcf` nella finestra i contatti nuovi entrano in rubrica e quelli già presenti si saltano.
+- **Tabelle ordinabili**: clic sull'intestazione in Contatti, Ore e Archivio (vista *Tabella*).
+- **Incolla immagini** (Ctrl+V) nelle note, nelle consulenze, nei verbali e nel riquadro allegati: l'immagine diventa un allegato con anteprima e nel testo resta il segnaposto `[immagine: …]`, che nei post-it, nel rapportino e nel verbale stampati diventa l'immagine.
 - Le note e gli esiti delle attività **si allungano** man mano che scrivi (Maiusc+Invio va a capo nel titolo di un'attività).
-- **Temi**: oltre a chiaro e scuro, tre tenui (Salvia, Lavanda, Sabbia) e tre decisi (Cobalto, Corallo, Smeraldo scuro) in *Impostazioni → Tema*.
+- **Temi**: oltre a chiaro e scuro, tre tenui (Salvia, Lavanda, Sabbia, con versione scura automatica quando Windows è in modalità scura) e tre decisi (Cobalto, Corallo, Smeraldo scuro). In *Impostazioni → Aspetto* passando col mouse su un tema lo vedi subito, con un clic lo scegli.
 
 ### Comandi rapidi
 
@@ -100,4 +104,12 @@ Struttura:
 - `server/crud.py` – lettura/scrittura generica, validazione, storico; `server/ops.py` – pianificazione, ore, ricorrenze, verbali, consulenze, cockpit, riepiloghi; `server/auth.py` – utenti e sessioni; `server/legacy.py` – import da Activity Desk; `server/app.py` – HTTP e rotte.
 - `web/` – interfaccia senza framework: `js/form.js` costruisce i moduli dalla descrizione delle sezioni, `js/views/` una vista per sezione, `css/app.css` lo stile (font Figtree e IBM Plex Mono, inclusi).
 - `server/migrations/` – lo schema del database, aggiornato da solo all'avvio.
-"# plancia" 
+"# plancia"
+
+## Test
+
+```powershell
+python -m unittest discover -s tests
+```
+
+Le prove dell'interfaccia nel browser (`tests/test_ui.py`) partono solo se sono installati Node.js e Playwright (`npm install -g playwright`, poi `npx playwright install chromium`); altrimenti vengono saltate.

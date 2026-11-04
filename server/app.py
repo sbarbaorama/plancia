@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import attachments, auth, backup, crud, importer, legacy, ops
+from . import attachments, auth, backup, crud, importer, legacy, ops, rubrica
 from .crud import Ctx, Forbidden, NotFound, ValidationError
 from .db import connect, open_db
 from .schema import R, public_schema
@@ -351,6 +351,27 @@ def r_time_csv(h, conn, q, ctx):
     start, end = _date(q, "from", today.replace(day=1)), _date(q, "to", today)
     return TextResponse(ops.time_csv(conn, start, end, ctx, q.get("user", "me")), "text/csv; charset=utf-8",
                         f"ore_{start.isoformat()}_{end.isoformat()}.csv")
+
+
+# rubrica e aziende
+@route("GET", r"/api/contacts/export\.csv")
+def r_contacts_csv(h, conn, q, ctx):
+    return TextResponse(rubrica.export_csv(conn, ctx), "text/csv; charset=utf-8", "contatti.csv")
+
+
+@route("GET", r"/api/contacts/export\.vcf")
+def r_contacts_vcf(h, conn, q, ctx):
+    return TextResponse(rubrica.export_vcf(conn, ctx), "text/vcard; charset=utf-8", "contatti.vcf")
+
+
+@route("POST", r"/api/contacts/import_vcf")
+def r_contacts_import(h, conn, q, ctx):
+    return rubrica.import_vcf(conn, h.body().get("content"), ctx)
+
+
+@route("POST", r"/api/companies/(\d+)/merge")
+def r_company_merge(h, conn, q, ctx, cid):
+    return crud.merge_companies(conn, cid, h.body().get("into_id"))
 
 
 # modifiche, clienti, riepilogo, ricerca

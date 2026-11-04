@@ -2,7 +2,7 @@
 import { get, post, put } from "./api.js";
 import { attachmentsBox } from "./attachments.js";
 import { field, openEditor, readForm } from "./form.js";
-import { pasteImages } from "./paste.js";
+import { imagesOf, pasteImages, richText } from "./paste.js";
 import {
   addDays, autoGrow, clear, closePanel, confirmDialog, copyText, fmtDate, fmtDateTime, h, icon, isTeam, label,
   loadContacts, loadCustomers, loadProjects, nowLocal, onSubmitOnce, openPanel, popMenu, printDoc, resolveCombos, showError, store, toast, todayISO,
@@ -212,7 +212,22 @@ export async function openContactEditor(c, opts = {}) {
       return smBox;
     },
     transform: (data) => ({ sm_customer_ids: boxes.map((b) => b.querySelector("input")).filter((i) => i.checked).map((i) => Number(i.value)) }),
+    beforeSave: (data) => checkDuplicateContact(data, c?.id),
   });
+}
+
+/** Avvisa se in rubrica c'è già una persona con lo stesso nome e cognome (o la stessa email). */
+async function checkDuplicateContact(data, id) {
+  const norm = (s) => String(s || "").trim().toLocaleLowerCase("it");
+  const first = norm(data.first_name), last = norm(data.last_name), email = norm(data.email);
+  if (!first && !last) return true;
+  const found = await get(`/api/contacts?q=${encodeURIComponent(data.last_name || data.first_name)}`).catch(() => []);
+  const extra = email ? await get(`/api/contacts?q=${encodeURIComponent(data.email)}`).catch(() => []) : [];
+  const same = [...found, ...extra].filter((x, i, all) => x.id !== id && all.findIndex((y) => y.id === x.id) === i
+    && ((norm(x.first_name) === first && norm(x.last_name) === last) || (email && norm(x.email) === email)));
+  if (!same.length) return true;
+  const who = same.map((x) => `${[x.last_name, x.first_name].filter(Boolean).join(" ") || x.name}${x.company ? ` (${x.company})` : ""}${x.email ? ` · ${x.email}` : ""}`).join(", ");
+  return confirmDialog("Questo contatto sembra già in rubrica", { detail: `Esiste già: ${who}. Vuoi salvarlo comunque?`, confirm: "Salva comunque", danger: false });
 }
 
 // ------------------------------------------------------------------ consulenze
@@ -289,7 +304,12 @@ export function consultationText(c) {
     c.closing_note ? `\nNote di chiusura:\n${c.closing_note}` : ""].filter((x) => x !== "").join("\n");
 }
 
-export function printConsultation(c) {
+export async function printConsultation(c) {
+  const images = await imagesOf("consultations", c.id);
+  const used = new Set();
+  const notes = c.notes ? richText(c.notes, images, used) : null;
+  const closing = c.closing_note ? richText(c.closing_note, images, used) : null;
+  const rest = images.filter((a) => !used.has(a.name));
   printDoc(
     h("h1", {}, "Rapportino di consulenza"),
     h("div", { class: "meta" }, `${fmtDate(c.date_start, { year: true })}${c.date_end && c.date_end !== c.date_start ? ` – ${fmtDate(c.date_end, { year: true })}` : ""}`,
@@ -298,7 +318,9 @@ export function printConsultation(c) {
     h("h2", {}, "Attività"),
     h("table", {}, h("tr", {}, h("th", {}, "Attività"), h("th", {}, "Fatto"), h("th", {}, "Esito")),
       (c.activities || []).map((a) => h("tr", {}, h("td", {}, a.title), h("td", {}, a.done ? "Sì" : "No"), h("td", {}, a.outcome || "")))),
-    c.closing_note ? [h("h2", {}, "Note di chiusura"), h("pre", {}, c.closing_note)] : null,
+    notes ? [h("h2", {}, "Note"), h("pre", {}, notes)] : null,
+    closing ? [h("h2", {}, "Note di chiusura"), h("pre", {}, closing)] : null,
+    rest.length ? [h("h2", {}, "Immagini"), h("div", { class: "print-images" }, rest.map((a) => h("figure", {}, h("img", { src: `/api/attachments/${a.id}/file`, alt: a.name }), h("figcaption", {}, a.name))))] : null,
     h("div", { class: "sign" }, h("div", {}, "Firma del consulente"), h("div", {}, "Firma per il cliente")));
 }
 

@@ -99,6 +99,38 @@ class CrudTest(Base):
         with self.assertRaises(crud.ValidationError):
             crud.create_item(self.conn, "companies", {"name": "ACME SRL"})
 
+    def test_company_rename_merge_delete(self):
+        a = crud.create_item(self.conn, "companies", {"name": "Acme"})
+        b = crud.create_item(self.conn, "companies", {"name": "Acme Srl"})
+        c = crud.create_item(self.conn, "contacts", {"first_name": "Mario", "last_name": "Rossi", "company": "Acme"})
+        crud.update_item(self.conn, "companies", a["id"], {"name": "ACME Spa"})
+        self.assertEqual(crud.get_item(self.conn, "contacts", c["id"])["company"], "ACME Spa")
+        with self.assertRaises(crud.ValidationError):  # usata da un contatto
+            crud.delete_item(self.conn, "companies", a["id"])
+        merged = crud.merge_companies(self.conn, a["id"], b["id"])
+        self.assertEqual(merged["contacts_count"], 1)
+        self.assertEqual(crud.get_item(self.conn, "contacts", c["id"])["company"], "Acme Srl")
+        self.assertEqual([x["name"] for x in crud.list_items(self.conn, "companies")], ["Acme Srl"])
+
+    def test_vcard_roundtrip(self):
+        from server import rubrica
+        crud.create_item(self.conn, "contacts", {"first_name": "Anna", "last_name": "D'Amico", "company": "Beta, Srl",
+                                                 "email": "anna@beta.it", "phone": "+39 0461 123456", "notes": "riga 1\nriga 2"})
+        vcf = rubrica.export_vcf(self.conn)
+        self.assertIn("ORG:Beta\\, Srl", vcf)
+        people = rubrica.parse_vcf(vcf)
+        self.assertEqual(people[0]["company"], "Beta, Srl")
+        self.assertEqual(people[0]["notes"], "riga 1\nriga 2")
+        outlook = "BEGIN:VCARD\r\nVERSION:2.1\r\nN;LANGUAGE=it:Verdi;Luca\r\nFN:Luca Verdi\r\nORG:Gamma\r\n" \
+                  "TEL;HOME;VOICE:011 1\r\nTEL;CELL;VOICE:333 2\r\nEMAIL;PREF;INTERNET:luca@gamma.it\r\nEND:VCARD\r\n"
+        r = rubrica.import_vcf(self.conn, vcf + outlook)
+        self.assertEqual(r["created"], 1)
+        self.assertEqual(r["skipped"], ["Anna D'Amico"])
+        luca = crud.list_items(self.conn, "contacts", {"q": "Verdi"})[0]
+        self.assertEqual((luca["first_name"], luca["company"], luca["phone"]), ("Luca", "Gamma", "333 2"))
+        csv_text = rubrica.export_csv(self.conn)
+        self.assertTrue(csv_text.startswith("\ufeffCognome;Nome"))
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])
