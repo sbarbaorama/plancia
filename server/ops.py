@@ -644,7 +644,7 @@ def dashboard(conn, today: date, ctx=LOCAL):
         "changes_upcoming": [crud.row_dict(R["changes"], r) for r in conn.execute(
             R["changes"].select + " WHERE ch.outcome = 'pianificata' AND substr(ch.planned_at,1,10) >= ? AND substr(ch.planned_at,1,10) <= ?"
             + and_(vis_c) + " ORDER BY ch.planned_at, ch.id", [t, week] + vp_c)],
-        "recent_meetings": list_items(conn, "meetings", {"limit": 5}, ctx),
+        "recent_meetings": list_items(conn, "meetings", {"status": "attiva", "limit": 5}, ctx),
         "inbox_count": conn.execute("SELECT COUNT(*) FROM inbox_items WHERE processed_at IS NULL AND (? = 0 OR owner_id = ?)",
                                     (1 if ctx.team else 0, ctx.user_id)).fetchone()[0],
         "minutes_today": day_min, "minutes_week": week_min,

@@ -167,6 +167,27 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     assert(r.created === 1 && r.skipped.length >= 4, JSON.stringify(r));
   });
 
+  await check("verbali: chiusi nascosti, filtro e riapertura", async () => {
+    const m1 = await api("POST", "/api/meetings", { title: "SAL ottobre", series: "SAL CVM" });
+    await api("POST", "/api/meetings", { title: "SAL novembre", series: "SAL CVM" });
+    await go("#/riunioni");
+    const titles = () => page.$$eval(".item .t-title", (t) => t.map((x) => x.textContent));
+    assert((await titles()).length === 2, "attese 2 riunioni attive");
+    await click(`.item:has-text("SAL ottobre") >> text=Chiudi`);
+    assert(JSON.stringify(await titles()) === JSON.stringify(["SAL novembre"]), `attive: ${await titles()}`);
+    await click(".segmented >> text=Chiuse");
+    assert(JSON.stringify(await titles()) === JSON.stringify(["SAL ottobre"]), `chiuse: ${await titles()}`);
+    await go(`#/riunioni/${m1.id}`);
+    assert((await page.textContent(".banner")).includes("Verbale chiuso"), "manca l'avviso nel verbale chiuso");
+    await click("button >> text=Riapri");
+    assert((await api("GET", `/api/meetings/${m1.id}`)).status === "attiva", "non riaperto");
+    await go("#/riunioni");
+    await click(".segmented >> text=Attive");
+    await page.click("text=Chiudi la serie");
+    await page.click("dialog[open] >> text=Chiudi la serie"); await page.waitForTimeout(600);
+    assert((await titles()).length === 0, "la serie non è stata chiusa");
+  });
+
   await check("nessun errore JavaScript", async () => { assert(!errors.length, errors.join(" | ")); });
   await browser.close();
   console.log(JSON.stringify(results));

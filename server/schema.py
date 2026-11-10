@@ -222,6 +222,7 @@ add(Resource(
         "attendees": ("longtext", "Partecipanti", None), "agenda": ("longtext", "Ordine del giorno", None),
         "discussion": ("longtext", "Discussione", None), "decisions": ("longtext", "Decisioni", None),
         "next_meeting": ("text", "Prossimo incontro", None), "visibility": ("enum", "Visibilità", VIS),
+        "status": ("enum", "Stato", ("attiva", "chiusa")),
     },
     required=("title",),
     select=f"""SELECT m.*, p.name AS project_name, p.color AS project_color,
@@ -234,7 +235,7 @@ add(Resource(
     order="m.date DESC, m.id DESC",
     search=("title", "series", "attendees", "agenda", "discussion", "decisions", "next_meeting"),
     customer_col="COALESCE(m.customer_id, p.customer_id)", date_col="m.date", visibility="team",
-    defaults={"visibility": "team"},
+    defaults={"visibility": "team", "status": "attiva"},
 ))
 
 add(Resource(

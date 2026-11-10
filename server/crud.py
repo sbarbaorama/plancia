@@ -436,6 +436,12 @@ def _finalize(conn, resource, record, old=None):
             record["closed_at"] = now
         elif status == "in_attesa":
             record["closed_at"] = None
+    elif resource == "meetings":
+        status = record.get("status", old.get("status", "attiva"))
+        if status == "chiusa" and old.get("status") != "chiusa":
+            record["closed_at"] = now
+        elif status == "attiva" and old.get("status") == "chiusa":
+            record["closed_at"] = None
     elif resource == "change_freezes":
         s, e = record.get("start_date", old.get("start_date")), record.get("end_date", old.get("end_date"))
         if s and e and e < s:
