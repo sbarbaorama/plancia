@@ -4,13 +4,13 @@ import { setLeaveGuard } from "../app.js";
 import { attachmentsBox } from "../attachments.js";
 import { field, readForm } from "../form.js";
 import { imagesOf, pasteImages, richText } from "../paste.js";
-import { meetingRow, taskRow } from "../rows.js";
+import { meetingRow, setMeetingStatus, taskRow } from "../rows.js";
 import {
   badge, clear, confirmDialog, customerFilter, fmtDate, fmtDateTime, h, icon, isTeam, label, loadCustomers, loadProjects, loadUsers,
-  listOrCards, nowLocal, pageHead, printDoc, resolveCombos, select, showError, store, toast, viewMode, viewToggle,
+  listOrCards, nowLocal, pageHead, printDoc, resolveCombos, segmented, select, showError, store, toast, viewMode, viewToggle,
 } from "../ui.js";
 
-const state = { customer_id: "", series: "", q: "" };
+const state = { customer_id: "", series: "", q: "", status: "attiva" };
 let view = viewMode("riunioni");
 
 export async function render(root, ctx) {
@@ -20,20 +20,36 @@ export async function render(root, ctx) {
   const items = await get(`/api/meetings${qs(state)}`);
   if (!ctx.isCurrent()) return;
   const bySeries = state.series ? null : items.reduce((acc, m) => ((acc[m.series || ""] = acc[m.series || ""] || []).push(m), acc), {});
+  const reload = () => render(root, ctx);
+  const row = (m) => meetingRow(m, { onChange: reload });
+  const closeSeries = async (s, ms) => {
+    const open = ms.filter((m) => m.status !== "chiusa");
+    if (!(await confirmDialog(`Chiudere tutti i ${open.length} verbali della serie «${s}»?`, { confirm: "Chiudi la serie", danger: false,
+      detail: "Non compariranno più tra gli attivi; li ritrovi con il filtro «Chiuse». Le azioni restano come task." }))) return;
+    try {
+      for (const m of open) await put(`/api/meetings/${m.id}`, { status: "chiusa" });
+      toast(`Serie «${s}» chiusa`, "ok");
+    } catch (err) { showError(err); }
+    reload();
+  };
+  const empty = { attiva: "Nessun verbale attivo. I verbali chiusi si vedono con il filtro «Chiuse».", chiusa: "Nessun verbale chiuso." }[state.status]
+    || "Nessun verbale. Creane uno: partecipanti, ordine del giorno, decisioni e azioni.";
   clear(root,
     pageHead("Riunioni", "Verbali da modello: le azioni diventano task, quelle aperte passano alla riunione successiva della serie",
       h("a", { class: "btn btn-primary", href: "#/riunioni/new" }, icon("plus"), "Nuovo verbale")),
     h("div", { class: "filters" },
+      segmented([["attiva", "Attive"], ["chiusa", "Chiuse"], ["", "Tutte"]], state.status, (v) => { state.status = v; reload(); }, "Stato"),
       h("input", { type: "search", placeholder: "Cerca nei verbali…", value: state.q, onchange: (e) => { state.q = e.target.value; render(root, ctx); } }),
       customerFilter(customers, state.customer_id, (e) => { state.customer_id = e.target.value; render(root, ctx); }),
       select("series", [["", "Tutte le serie"], ...series.map((s) => [s, s])], state.series, { "aria-label": "Serie", onchange: (e) => { state.series = e.target.value; render(root, ctx); } }),
       h("span", { class: "spacer" }), viewToggle("riunioni", view, (v) => { view = v; render(root, ctx); })),
     items.length ? (bySeries
       ? Object.entries(bySeries).sort(([a], [b]) => (a === "") - (b === "") || a.localeCompare(b)).map(([s, ms]) => [
-        h("div", { class: "group-title" }, s || "Riunioni singole", ` · ${ms.length}`),
-        h("ul", { class: listOrCards(view) }, ms.map(meetingRow))])
-      : h("ul", { class: listOrCards(view) }, items.map(meetingRow)))
-      : h("div", { class: "card" }, h("div", { class: "empty" }, "Nessun verbale. Creane uno: partecipanti, ordine del giorno, decisioni e azioni.")));
+        h("div", { class: "group-title" }, s || "Riunioni singole", ` · ${ms.length}`,
+          s && ms.length > 1 && ms.some((m) => m.status !== "chiusa") ? h("button", { class: "btn btn-sm btn-ghost", type: "button", onclick: () => closeSeries(s, ms) }, "Chiudi la serie") : null),
+        h("ul", { class: listOrCards(view) }, ms.map(row))])
+      : h("ul", { class: listOrCards(view) }, items.map(row)))
+      : h("div", { class: "card" }, h("div", { class: "empty" }, empty)));
 }
 
 async function renderDoc(root, ctx) {
@@ -126,6 +142,14 @@ async function renderDoc(root, ctx) {
     pageHead(isNew ? "Nuovo verbale" : m.title, { eyebrow: h("a", { href: "#/riunioni" }, "← Riunioni") },
       !isNew ? h("button", { class: "btn", type: "button", onclick: () => print(m, readActions()) }, icon("print"), "Stampa / PDF") : null,
       !isNew && m.series ? h("a", { class: "btn", href: `#/riunioni/new?series=${encodeURIComponent(m.series)}` }, "Prossima della serie") : null,
+      !isNew ? h("button", { class: "btn", type: "button", title: m.status === "chiusa" ? "Riporta il verbale tra quelli attivi" : "Il verbale non comparirà più tra gli attivi",
+        onclick: async () => {
+          if (dirty) await save(true);
+          const open = readActions().filter((a) => a.status !== "chiuso").length;
+          if (m.status !== "chiusa" && open && !(await confirmDialog(`Il verbale ha ${open} azioni ancora aperte. Chiuderlo comunque?`,
+            { confirm: "Chiudi il verbale", danger: false, detail: "Le azioni restano come task aperti." }))) return;
+          await setMeetingStatus(m, m.status === "chiusa" ? "attiva" : "chiusa", () => render(root, { ...ctx, id: String(m.id) }));
+        } }, m.status === "chiusa" ? "Riapri" : "Chiudi verbale") : null,
       !isNew ? h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
         if (!(await confirmDialog("Eliminare il verbale? Le azioni restano come task.", { confirm: "Elimina" }))) return;
         await del(`/api/meetings/${m.id}`).catch(showError);
@@ -134,6 +158,8 @@ async function renderDoc(root, ctx) {
       } }, "Elimina") : null,
       h("button", { class: "btn focus-btn", type: "button", onclick: toggleFocus, title: "Nasconde menu e barra in alto e porta il verbale a schermo intero" }, icon("maximize"), h("span", { class: "on-off" }, "Schermo intero")),
       h("button", { class: "btn btn-primary", type: "button", onclick: () => save() }, "Salva ", h("kbd", {}, "Ctrl S"))),
+    !isNew && m.status === "chiusa" ? h("div", { class: "banner" }, icon("archivio"),
+      `Verbale chiuso${m.closed_at ? ` il ${fmtDate(m.closed_at, { year: true })}` : ""}: non compare tra le riunioni attive. Puoi comunque modificarlo o riaprirlo.`) : null,
     h("div", { class: "doc-cols" },
       h("div", { class: "col-main" }, h("div", { class: "card card-pad" }, form)),
       h("div", { class: "col-side" },

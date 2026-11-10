@@ -35,7 +35,7 @@ Activity Desk e Plancia usano porte diverse (8765 e 8770): possono convivere fin
 | | **Timeline** | I task su un calendario orizzontale, per progetto o per cliente |
 | Lavoro | **Task** | Lista per scadenza o **Kanban** per stato (trascina tra le colonne). Ogni task ha cliente (anche senza progetto), progetto, priorità, inizio, scadenza, stima, sotto-task con esito, **ricorrenza** (chiudendolo si crea il successivo), allegati e storico delle modifiche |
 | | **Progetti** | Avanzamento, task, verbali, appuntamenti e documenti |
-| | **Riunioni** | Verbali da modello. Le **azioni diventano task**. Le riunioni con la stessa **serie** (es. "SAL CVM") mostrano le azioni ancora aperte delle precedenti. Stampa / PDF, Ctrl+S |
+| | **Riunioni** | Verbali da modello. Le **azioni diventano task**. Le riunioni con la stessa **serie** (es. "SAL CVM") mostrano le azioni ancora aperte delle precedenti. I verbali si **chiudono** (uno alla volta o tutta la serie) e spariscono dall'elenco, che mostra di base solo quelli *Attivi*; con il filtro *Chiuse* o *Tutte* li ritrovi e li riapri. Stampa / PDF, Ctrl+S |
 | | **Consulenze** | Giornate con i consulenti: attività con esito, rapportino con le firme, riepilogo per la mail, duplica per la settimana dopo |
 | | **Note** | Post-it colorati con il campo **Comando** da copiare al volo (filtro "Solo comandi") |
 | | **Inbox** | Note veloci (casella in alto) da smistare con un clic in task, modifica, attesa, post-it o appuntamento |

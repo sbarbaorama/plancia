@@ -131,6 +131,18 @@ class CrudTest(Base):
         csv_text = rubrica.export_csv(self.conn)
         self.assertTrue(csv_text.startswith("\ufeffCognome;Nome"))
 
+    def test_meeting_close_and_filter(self):
+        a = crud.create_item(self.conn, "meetings", {"title": "SAL 1", "series": "SAL"})
+        b = crud.create_item(self.conn, "meetings", {"title": "SAL 2", "series": "SAL"})
+        self.assertEqual(a["status"], "attiva")
+        a = crud.update_item(self.conn, "meetings", a["id"], {"status": "chiusa"})
+        self.assertTrue(a["closed_at"])
+        self.assertEqual([m["title"] for m in crud.list_items(self.conn, "meetings", {"status": "attiva"})], ["SAL 2"])
+        self.assertEqual(len(crud.list_items(self.conn, "meetings")), 2)
+        a = crud.update_item(self.conn, "meetings", a["id"], {"status": "attiva"})
+        self.assertIsNone(a["closed_at"])
+        self.assertEqual(b["status"], "attiva")
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])
