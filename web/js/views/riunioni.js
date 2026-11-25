@@ -3,11 +3,13 @@ import { del, get, post, put, qs } from "../api.js";
 import { setLeaveGuard } from "../app.js";
 import { attachmentsBox } from "../attachments.js";
 import { field, readForm } from "../form.js";
-import { imagesOf, pasteImages, richText } from "../paste.js";
+import { applyFont, fontButton, printFontStyle } from "../fonts.js";
+import { imagesOf, pasteImages } from "../paste.js";
+import { renderRich } from "../richtext.js";
 import { meetingRow, setMeetingStatus, taskRow } from "../rows.js";
 import {
   badge, clear, confirmDialog, customerFilter, fmtDate, fmtDateTime, h, icon, isTeam, label, loadCustomers, loadProjects, loadUsers,
-  listOrCards, nowLocal, pageHead, printDoc, resolveCombos, segmented, select, showError, store, toast, viewMode, viewToggle,
+  closePanel, listOrCards, nowLocal, onSubmitOnce, openPanel, pageHead, printDoc, resolveCombos, segmented, select, showError, store, toast, viewMode, viewToggle,
 } from "../ui.js";
 
 const state = { customer_id: "", series: "", q: "", status: "attiva" };
@@ -36,6 +38,7 @@ export async function render(root, ctx) {
     || "Nessun verbale. Creane uno: partecipanti, ordine del giorno, decisioni e azioni.";
   clear(root,
     pageHead("Riunioni", "Verbali da modello: le azioni diventano task, quelle aperte passano alla riunione successiva della serie",
+      h("button", { class: "btn", type: "button", onclick: () => groupIntoSeries(series, reload) }, "Raggruppa in una serie…"),
       h("a", { class: "btn btn-primary", href: "#/riunioni/new" }, icon("plus"), "Nuovo verbale")),
     h("div", { class: "filters" },
       segmented([["attiva", "Attive"], ["chiusa", "Chiuse"], ["", "Tutte"]], state.status, (v) => { state.status = v; reload(); }, "Stato"),
@@ -52,13 +55,43 @@ export async function render(root, ctx) {
       : h("div", { class: "card" }, h("div", { class: "empty" }, empty)));
 }
 
+/** Mette in una serie (nuova o esistente) dei verbali già scritti. */
+async function groupIntoSeries(series, onDone) {
+  const all = await get("/api/meetings");
+  const name = h("input", { type: "text", id: "group-series", list: "group-series-list", placeholder: "es. SAL CVM", maxlength: 300, autocomplete: "off" });
+  const boxes = all.map((m) => h("label", { class: "check series-pick" },
+    h("input", { type: "checkbox", value: m.id }),
+    h("span", {}, h("b", {}, m.title), h("span", { class: "small muted" }, ` · ${m.date ? fmtDate(m.date, { year: true }) : "senza data"}${m.series ? ` · serie «${m.series}»` : ""}${m.status === "chiusa" ? " · chiusa" : ""}`))));
+  const form = h("form", { class: "form" },
+    h("label", { class: "field", for: "group-series" }, "Nome della serie (nuova o esistente)", name),
+    h("datalist", { id: "group-series-list" }, series.map((s) => h("option", { value: s }))),
+    h("div", { class: "field" }, h("span", {}, "Verbali da mettere nella serie"),
+      all.length ? h("div", { class: "stack", style: { gap: "2px", maxHeight: "50vh", overflowY: "auto" } }, boxes) : h("span", { class: "muted" }, "Nessun verbale")),
+    h("p", { class: "hint" }, "Nella serie, ogni verbale mostra le azioni ancora aperte dei verbali precedenti (in ordine di data)."),
+    h("div", { class: "panel-foot" }, h("button", { class: "btn btn-primary", type: "submit" }, "Metti nella serie"),
+      h("button", { class: "btn", type: "button", onclick: () => closePanel() }, "Annulla")));
+  onSubmitOnce(form, async () => {
+    const s = name.value.trim();
+    const ids = boxes.map((b) => b.querySelector("input")).filter((i) => i.checked).map((i) => Number(i.value));
+    if (!s) { toast("Scrivi il nome della serie", "error"); name.focus(); return; }
+    if (!ids.length) { toast("Scegli almeno un verbale", "error"); return; }
+    try {
+      for (const id of ids) await put(`/api/meetings/${id}`, { series: s });
+      toast(`${ids.length === 1 ? "1 verbale" : `${ids.length} verbali`} nella serie «${s}»`, "ok");
+      closePanel();
+      onDone();
+    } catch (err) { showError(err); }
+  });
+  openPanel("Raggruppa in una serie", form, { wide: true });
+}
+
 async function renderDoc(root, ctx) {
   const isNew = ctx.id === "new";
   const [customers, projects, users, series] = await Promise.all([loadCustomers(), loadProjects(), isTeam() ? loadUsers() : [], get("/api/meetings/series")]);
   let m = isNew ? { title: "", date: nowLocal(), visibility: "team" } : await get(`/api/meetings/${ctx.id}`);
   if (isNew && ctx.query.event_id) {
     const ev = await get(`/api/events/${ctx.query.event_id}`).catch(() => null);
-    if (ev) m = { ...m, title: ev.title, date: ev.start, event_id: ev.id, customer_id: ev.customer_id, project_id: ev.project_id };
+    if (ev) m = { ...m, title: ev.title, date: ev.start, event_id: ev.id, customer_id: ev.customer_id, project_id: ev.project_id, series: ev.series || "" };
   }
   if (isNew && ctx.query.series) m.series = ctx.query.series;
   const actions = isNew ? [] : await get(`/api/meetings/${m.id}/actions`);
@@ -78,6 +111,7 @@ async function renderDoc(root, ctx) {
     h("div", { class: "doc-pair" }, field("decisions", F.decisions, m.decisions, fk), field("next_meeting", F.next_meeting, m.next_meeting, fk)));
   if (isTeam()) form.append(field("visibility", F.visibility, m.visibility, fk));
   const pasted = pasteImages(form, "meetings", isNew ? null : m.id);
+  applyFont(form, "verbali");
 
   // azioni
   const rowsBox = h("div", { class: "action-list" });
@@ -131,7 +165,7 @@ async function renderDoc(root, ctx) {
     const att = form.elements.namedItem("attendees");
     const missing = (c.service_managers || []).filter((s) => !att.value.includes(s.name));
     if (missing.length && await confirmDialog(`Aggiungere ai partecipanti il service manager (${missing.map((s) => s.name).join(", ")})?`, { confirm: "Aggiungi", danger: false })) {
-      att.value = [att.value.trim(), ...missing.map((s) => s.name)].filter(Boolean).join("\n");
+      form.querySelector('[data-rich="attendees"]').appendLines(missing.map((s) => s.name));
       att.dispatchEvent(new Event("input"));
     }
   };
@@ -141,7 +175,13 @@ async function renderDoc(root, ctx) {
   clear(root, h("div", { class: "doc" },
     pageHead(isNew ? "Nuovo verbale" : m.title, { eyebrow: h("a", { href: "#/riunioni" }, "← Riunioni") },
       !isNew ? h("button", { class: "btn", type: "button", onclick: () => print(m, readActions()) }, icon("print"), "Stampa / PDF") : null,
-      !isNew && m.series ? h("a", { class: "btn", href: `#/riunioni/new?series=${encodeURIComponent(m.series)}` }, "Prossima della serie") : null,
+      !isNew && m.series ? h("button", { class: "btn", type: "button", title: "Nuovo verbale nella stessa serie (sul prossimo appuntamento in calendario della serie, se c'è)",
+        onclick: async () => {
+          const after = (m.date || "").slice(0, 10) || nowLocal().slice(0, 10);
+          const evs = await get(`/api/events${qs({ from: after })}`).catch(() => []);
+          const next = evs.find((e) => e.series === m.series && !e.meeting_id && e.start > (m.date || ""));
+          location.hash = next ? `#/riunioni/new?event_id=${next.id}` : `#/riunioni/new?series=${encodeURIComponent(m.series)}`;
+        } }, "Prossima della serie") : null,
       !isNew ? h("button", { class: "btn", type: "button", title: m.status === "chiusa" ? "Riporta il verbale tra quelli attivi" : "Il verbale non comparirà più tra gli attivi",
         onclick: async () => {
           if (dirty) await save(true);
@@ -156,6 +196,7 @@ async function renderDoc(root, ctx) {
         setLeaveGuard(null);
         location.hash = "#/riunioni";
       } }, "Elimina") : null,
+      fontButton("verbali"),
       h("button", { class: "btn focus-btn", type: "button", onclick: toggleFocus, title: "Nasconde menu e barra in alto e porta il verbale a schermo intero" }, icon("maximize"), h("span", { class: "on-off" }, "Schermo intero")),
       h("button", { class: "btn btn-primary", type: "button", onclick: () => save() }, "Salva ", h("kbd", {}, "Ctrl S"))),
     !isNew && m.status === "chiusa" ? h("div", { class: "banner" }, icon("archivio"),
@@ -193,8 +234,8 @@ document.addEventListener("fullscreenchange", () => {
 async function print(m, actions) {
   const images = m.id ? await imagesOf("meetings", m.id) : [];
   const used = new Set();
-  const rt = (t) => h("pre", {}, richText(t, images, used));
-  printDoc(
+  const rt = (t) => h("div", { class: "rich-print" }, renderRich(t, { images, used }));
+  printDoc(h("div", { style: printFontStyle("verbali") },
     h("h1", {}, m.title),
     h("div", { class: "meta" }, [m.date ? fmtDateTime(m.date) : "", m.customer_name, m.project_name, m.series ? `Serie: ${m.series}` : ""].filter(Boolean).join(" · ")),
     m.attendees ? [h("h2", {}, "Partecipanti"), rt(m.attendees)] : null,
@@ -203,5 +244,5 @@ async function print(m, actions) {
     m.decisions ? [h("h2", {}, "Decisioni"), rt(m.decisions)] : null,
     actions.length ? [h("h2", {}, "Azioni"), h("table", {}, h("tr", {}, h("th", {}, "Azione"), h("th", {}, "Entro"), h("th", {}, "Stato")),
       actions.map((a) => h("tr", {}, h("td", {}, a.title), h("td", {}, a.due_date ? fmtDate(a.due_date, { year: true }) : ""), h("td", {}, label(a.status)))))] : null,
-    m.next_meeting ? [h("h2", {}, "Prossimo incontro"), h("pre", {}, m.next_meeting)] : null);
+    m.next_meeting ? [h("h2", {}, "Prossimo incontro"), h("pre", {}, m.next_meeting)] : null));
 }

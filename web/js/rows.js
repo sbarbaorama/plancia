@@ -49,7 +49,9 @@ export function eventRow(e, { onChange = changed } = {}) {
     h("span", { class: "mono small", style: { width: "48px", color: "var(--muted)" } }, e.all_day ? "giorno" : fmtTime(e.start)),
     h("span", { class: "dot", style: { background: "var(--info)", alignSelf: "stretch", width: "3px", height: "auto", borderRadius: "2px" } }),
     h("div", { class: "main-col" }, h("div", { class: "t-title" }, e.title),
-      h("div", { class: "meta" }, customerChip(e), e.location ? h("span", {}, e.location) : null, e.meeting_id ? badge("verbale", "violet") : null)),
+      h("div", { class: "meta" }, customerChip(e), e.location ? h("span", {}, e.location) : null,
+        e.recurrence_group ? h("span", { title: "Appuntamento ricorrente" }, "↻ ricorrente") : null,
+        e.series ? badge(e.series, "violet") : null, e.meeting_id ? badge("verbale", "violet") : null)),
     h("div", { class: "side-col" }, fmtDue(e.start.slice(0, 10))));
 }
 
@@ -59,6 +61,7 @@ export function consultationRow(c, { onChange = changed } = {}) {
     h("div", { class: "main-col" }, h("div", { class: "t-title" }, c.title || `Consulenza ${c.consultant_name || ""}`),
       h("div", { class: "meta" }, h("span", {}, c.consultant_name || "—"), customerChip(c),
         h("span", { class: "progress-txt" }, `${c.activities_done}/${c.activities_total} attività`),
+        c.next_mode && c.next_mode !== "nessuna" ? h("span", { title: "Consulenza ricorrente" }, `↻ ${label(c.next_mode).toLowerCase()}`) : null,
         c.status === "chiusa" ? badge("chiusa", "ok") : null)),
     h("div", { class: "side-col" }, fmtDate(c.date_start, { weekday: true })));
 }
@@ -115,15 +118,15 @@ export async function setMeetingStatus(m, status, onChange = changed) {
 }
 
 export function meetingRow(m, opts) {
-  const onChange = typeof opts === "object" && opts ? opts.onChange : null;
+  const onChange = (typeof opts === "object" && opts?.onChange) || changed;
   const closed = m.status === "chiusa";
   return h("li", { class: `item${closed ? " closed" : ""}`, onclick: () => { location.hash = `#/riunioni/${m.id}`; } },
     h("div", { class: "main-col" }, h("div", { class: "t-title" }, m.title),
       h("div", { class: "meta" }, closed ? badge("chiusa") : null, m.series ? badge(m.series, "violet") : null, customerChip(m), m.project_name ? h("span", {}, m.project_name) : null,
         m.actions_total ? h("span", { class: m.actions_open ? "soon" : "" }, `${m.actions_open} azioni aperte su ${m.actions_total}`) : null)),
     h("div", { class: "side-col" }, m.date ? fmtDateTime(m.date) : ""),
-    onChange ? h("button", { class: "btn btn-sm btn-ghost", type: "button", title: closed ? "Riporta il verbale tra quelli attivi" : "Chiudi il verbale: non compare più tra gli attivi",
-      onclick: (e) => { e.stopPropagation(); setMeetingStatus(m, closed ? "attiva" : "chiusa", onChange); } }, closed ? "Riapri" : "Chiudi") : null);
+    h("button", { class: "btn btn-sm", type: "button", title: closed ? "Riporta il verbale tra quelli attivi" : "Chiudi il verbale: non compare più tra le riunioni attive",
+      onclick: (e) => { e.stopPropagation(); setMeetingStatus(m, closed ? "attiva" : "chiusa", onChange); } }, icon("archivio"), closed ? "Riapri" : "Chiudi"));
 }
 
 export const list = (items, row, emptyText, opts) => items.length

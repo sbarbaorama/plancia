@@ -143,6 +143,103 @@ class CrudTest(Base):
         self.assertIsNone(a["closed_at"])
         self.assertEqual(b["status"], "attiva")
 
+    def test_recurring_events(self):
+        from server import ricorrenze
+        ev = crud.create_item(self.conn, "events", {"title": "SAL CVM", "start": "2026-12-01T10:00", "end": "2026-12-01T11:00",
+                                                    "recurrence_unit": "settimane", "recurrence_every": 2, "recurrence_until": "2027-01-31",
+                                                    "series": "SAL CVM"})
+        all_ = crud.list_items(self.conn, "events")
+        self.assertEqual([e["start"] for e in all_], ["2026-12-01T10:00", "2026-12-15T10:00", "2026-12-29T10:00", "2027-01-12T10:00", "2027-01-26T10:00"])
+        self.assertTrue(all(e["end"][11:] == "11:00" and e["series"] == "SAL CVM" for e in all_))
+        self.assertEqual((all_[2]["occurrences"], all_[2]["occurrence_index"]), (5, 3))
+        # verbale sulla terza: resta anche cambiando la regola
+        m = crud.create_item(self.conn, "meetings", {"title": "SAL", "event_id": all_[3]["id"]})
+        # solo questo: titolo diverso solo sulla seconda
+        ricorrenze.update(self.conn, all_[1]["id"], {"title": "SAL spostato"}, "this")
+        self.assertEqual([e["title"] for e in crud.list_items(self.conn, "events")].count("SAL spostato"), 1)
+        # questo e i successivi: nuovo orario e luogo dalla terza in poi
+        ricorrenze.update(self.conn, all_[2]["id"], {"start": "2026-12-29T14:00", "end": "2026-12-29T15:30", "location": "Trento"}, "following")
+        evs = crud.list_items(self.conn, "events")
+        self.assertEqual([e["start"][11:] for e in evs], ["10:00", "10:00", "14:00", "14:00", "14:00"])
+        self.assertEqual([e["location"] for e in evs], ["", "", "Trento", "Trento", "Trento"])
+        self.assertEqual(evs[4]["end"], "2027-01-26T15:30")
+        # nuova regola dalla terza: ogni settimana fino al 12 gennaio; la ripetizione con verbale resta
+        ricorrenze.update(self.conn, evs[2]["id"], {"recurrence_every": 1, "recurrence_until": "2027-01-12"}, "following")
+        evs = crud.list_items(self.conn, "events")
+        self.assertEqual([e["start"][:10] for e in evs], ["2026-12-01", "2026-12-15", "2026-12-29", "2027-01-05", "2027-01-12"])
+        self.assertEqual(crud.get_item(self.conn, "meetings", m["id"])["event_id"], evs[4]["id"])
+        self.assertEqual(evs[0]["recurrence_until"], "2026-12-28")  # il gruppo precedente finisce prima
+        with self.assertRaises(crud.ValidationError):
+            ricorrenze.update(self.conn, evs[3]["id"], {"recurrence_every": 3}, "this")
+        # elimina questo e i successivi
+        r = ricorrenze.delete(self.conn, evs[3]["id"], "following")
+        self.assertEqual(r["deleted"], 2)
+        self.assertEqual(len(crud.list_items(self.conn, "events")), 3)
+        # senza «Fino al»: un anno; un appuntamento singolo che diventa ricorrente
+        one = crud.create_item(self.conn, "events", {"title": "Riunione mensile", "start": "2027-03-10T09:00"})
+        ricorrenze.update(self.conn, one["id"], {"recurrence_unit": "mesi"}, "this")
+        self.assertEqual(len(crud.list_items(self.conn, "events", {"q": "mensile"})), 13)
+        with self.assertRaises(crud.ValidationError):
+            crud.create_item(self.conn, "events", {"title": "X", "start": "2027-03-10", "recurrence_unit": "giorni", "recurrence_until": "2027-03-01"})
+
+    def test_consultation_recurring_and_carry(self):
+        co = self.mk("contacts", name="Luca Neri", is_consultant=True)
+        acts = [{"title": "Upgrade NetEye", "done": True}, {"title": "Soglie dischi", "outcome": "metà host"}, {"title": "Report"}]
+        c = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2026-12-01", "next_mode": "settimana", "activities": acts})
+        r = ops.close_consultation(self.conn, c["id"], "")
+        self.assertTrue(r["next_created"])
+        self.assertEqual(r["next"]["date_start"], "2026-12-08")
+        self.assertEqual(r["next"]["next_mode"], "settimana")
+        subs = ops.list_subtasks(self.conn, r["next"]["task_id"])
+        self.assertEqual([(s["title"], s["outcome"]) for s in subs], [("Soglie dischi", "metà host"), ("Report", "")])
+        # chiusa, riaperta e richiusa: nessuna consulenza nuova e nessun doppione
+        ops.reopen_consultation(self.conn, c["id"])
+        r2 = ops.close_consultation(self.conn, c["id"], "")
+        self.assertFalse(r2["next_created"])
+        self.assertEqual(r2["next"]["id"], r["next"]["id"])
+        self.assertEqual(len(ops.list_subtasks(self.conn, r["next"]["task_id"])), 2)
+        # una volta al mese
+        m = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-01-31", "next_mode": "mese"})
+        self.assertEqual(ops.close_consultation(self.conn, m["id"], "")["next"]["date_start"], "2027-02-28")
+        # data precisa: vale una volta sola
+        d = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-03-01", "next_mode": "data", "next_date": "2027-03-20"})
+        nd = ops.close_consultation(self.conn, d["id"], "")["next"]
+        self.assertEqual((nd["date_start"], nd["next_mode"]), ("2027-03-20", "nessuna"))
+        with self.assertRaises(crud.ValidationError):
+            ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-03-01", "next_mode": "data"})
+        # senza regola: le attività aperte vanno nella prossima già pianificata del consulente
+        a = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-05-01", "activities": [{"title": "Backup"}]})
+        b = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-05-10", "activities": [{"title": "Patch"}]})
+        rb = ops.close_consultation(self.conn, a["id"], "")
+        self.assertEqual((rb["next"]["id"], rb["carried"], rb["next_created"]), (b["id"], 1, False))
+        self.assertEqual([s["title"] for s in ops.list_subtasks(self.conn, b["task_id"])], ["Patch", "Backup"])
+        # senza «porta le attività»: nulla
+        x = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-06-01", "carry_open": False, "activities": [{"title": "Z"}]})
+        ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-06-08"})
+        self.assertEqual(ops.close_consultation(self.conn, x["id"], "")["carried"], 0)
+
+    def test_rich_text_sanitize(self):
+        from server import richtext
+        dirty = ('<p>Ciao <strong>mondo</strong> <span style="color:red" class="fs-l x">grande</span>'
+                 '<script>alert(1)</script><img src=x onerror=alert(1)><a href="javascript:alert(1)">no</a>'
+                 '<a href="https://example.com" onclick="x()">sì</a></p><div>riga<br>due</div>'
+                 '<pre>ls -la<br>cd /tmp</pre><style>p{}</style><ol start="3"><li>tre</li></ol><font size="7">x</font>')
+        clean = richtext.sanitize(dirty)
+        self.assertEqual(clean, '<p>Ciao <b>mondo</b> <span class="fs-l">grande</span>no'
+                                '<a href="https://example.com" target="_blank" rel="noopener noreferrer">sì</a></p>'
+                                '<p>riga<br>due</p><pre>ls -la\ncd /tmp</pre><ol start="3"><li>tre</li></ol>x')
+        self.assertFalse(richtext.is_rich("Testo semplice <b>non</b> formattato"))
+        self.assertEqual(richtext.to_text("<p>Uno <b>due</b></p><ul><li>a</li><li>b</li></ul>"), "Uno due\n\n- a\n- b")
+        # salvataggio: il verbale tiene solo la formattazione ammessa; il testo semplice resta com'è
+        m = crud.create_item(self.conn, "meetings", {"title": "SAL", "discussion": '<p onclick="x">Ok <u>sì</u><script>x</script></p>',
+                                                     "decisions": "Testo <semplice>"})
+        self.assertEqual(m["discussion"], "<p>Ok <u>sì</u></p>")
+        self.assertEqual(m["decisions"], "Testo <semplice>")
+        co = self.mk("contacts", name="Ugo", is_consultant=True)
+        c = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-01-10", "notes": "<p>N <b>b</b><iframe></iframe></p>"})
+        self.assertEqual(c["notes"], "<p>N <b>b</b></p>")
+        self.assertEqual(ops.close_consultation(self.conn, c["id"], "<p>fine<script>x</script></p>")["closing_note"], "<p>fine</p>")
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])

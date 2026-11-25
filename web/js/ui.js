@@ -82,6 +82,7 @@ const P = {
   mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/>',
   collapse: '<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+  procedure: '<path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 21.5A2.5 2.5 0 0 1 6.5 19H20v3H6.5M8 7h8M8 11h6"/>',
   list: '<path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
   cards: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
   team: '<circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 20a6 6 0 0 1 12 0M14 20a5 5 0 0 1 8-3.5"/>',
@@ -119,6 +120,21 @@ export function confirmDialog(message, { confirm = "Conferma", danger = true, de
     dlg.showModal();
   });
 }
+/** Finestra con più scelte: choices = [[valore, etichetta, classe del pulsante]]. Restituisce il valore o null. */
+export function choiceDialog(message, choices, { detail = "" } = {}) {
+  return new Promise((resolve) => {
+    let picked = null;
+    const dlg = h("dialog", { "aria-label": message },
+      h("div", { class: "dialog-body" }, h("p", { style: { fontWeight: "600" } }, message), detail ? h("p", { class: "muted small" }, detail) : null),
+      h("div", { class: "dialog-foot" },
+        h("button", { class: "btn", type: "button", onclick: () => dlg.close() }, "Annulla"),
+        choices.map(([v, l, cls]) => h("button", { class: `btn ${cls || ""}`, type: "button", onclick: () => { picked = v; dlg.close(); } }, l))));
+    dlg.addEventListener("close", () => { resolve(picked); dlg.remove(); });
+    document.body.append(dlg);
+    dlg.showModal();
+  });
+}
+
 /** Finestra con testo da copiare (riepiloghi). */
 export function textDialog(title, text, extra = null) {
   const area = h("textarea", { rows: 14, value: text, readonly: true, style: { fontFamily: "var(--mono)", fontSize: "12.5px" } });

@@ -3,7 +3,7 @@ import { get, qs } from "../api.js";
 import { consultationText, openConsultationEditor, printConsultation } from "../editors.js";
 import { consultationRow } from "../rows.js";
 import {
-  addDays, badge, clear, copyText, customerChip, customerFilter, fmtDate, h, icon, loadCustomers, mondayOf, pageHead, segmented, todayISO,
+  addDays, badge, clear, copyText, customerChip, customerFilter, fmtDate, h, icon, label, loadCustomers, mondayOf, pageHead, segmented, todayISO,
   viewMode, viewToggle,
 } from "../ui.js";
 
@@ -22,6 +22,8 @@ export async function render(root, ctx) {
     h("div", { class: "row" }, h("b", { style: { flex: 1 } }, fmtDate(c.date_start, { weekday: true }), c.date_end && c.date_end !== c.date_start ? ` – ${fmtDate(c.date_end)}` : ""),
       c.status === "chiusa" ? badge("chiusa", "ok") : c.status === "in_corso" ? badge("in corso", "info") : badge("pianificata")),
     h("div", { style: { fontWeight: 600 } }, c.consultant_name || "Consulente?"),
+    c.next_mode && c.next_mode !== "nessuna" ? h("div", { class: "small muted" }, "↻ prossima: ", label(c.next_mode).toLowerCase(),
+      c.next_mode === "data" && c.next_date ? ` (${fmtDate(c.next_date)})` : "") : null,
     h("div", { class: "row small muted" }, customerChip(c), c.location ? h("span", {}, c.location) : null, c.project_name ? h("span", {}, c.project_name) : null),
     h("div", { class: "hbar" }, h("div", { class: "bar" }, h("span", { style: { width: c.activities_total ? `${(c.activities_done / c.activities_total) * 100}%` : "0%" } })),
       h("span", { class: "progress-txt" }, `${c.activities_done}/${c.activities_total}`)),

@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from . import richtext
 from .schema import ENUM_LABELS, R
 
 
@@ -129,6 +130,10 @@ def _clean(conn, res, name, value):
             raise ValidationError(f"{label}: testo non valido")
         value = str(value).strip() if kind != "longtext" else str(value).rstrip()
         limit = 300 if kind == "text" else 50000
+        if kind == "longtext" and richtext.is_rich(value):
+            # testo formattato dall'editor: si tiene solo la formattazione ammessa
+            value = richtext.sanitize(value)
+            limit = richtext.MAX_LEN
         if name == "command":
             limit = 20000
         if len(value) > limit:
@@ -560,6 +565,9 @@ def create_item(conn, resource, data, ctx=LOCAL, *, internal=False):
         item_id = _insert(conn, resource, record)
         if resource == "contacts":
             _set_sm_customers(conn, item_id, data.get("sm_customer_ids"), record.get("is_service_manager"))
+        if resource == "events" and record.get("recurrence_unit", "nessuna") != "nessuna":
+            from . import ricorrenze  # import locale: ricorrenze usa crud
+            ricorrenze.expand(conn, item_id)
         title = record.get(res.title, "")
         log(conn, ctx, resource, item_id, "creato", title, customer_of(conn, res, item_id))
         item = get_item(conn, resource, item_id)

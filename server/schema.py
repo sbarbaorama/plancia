@@ -23,7 +23,8 @@ ENUM_LABELS = {
     "annullata": "Annullata", "licenza": "Licenza", "contratto": "Contratto", "manutenzione": "Manutenzione",
     "verifica": "Verifica", "attiva": "Attiva", "fatta": "Fatta", "ricevuto": "Ricevuto", "annullato": "Annullato",
     "chiusa": "Chiusa", "giallo": "Giallo", "verde": "Verde", "blu": "Blu", "rosa": "Rosa", "viola": "Viola",
-    "arancio": "Arancio", "task": "Task", "consulenza": "Consulenza", "admin": "Amministratore", "membro": "Membro",
+    "arancio": "Arancio", "settimana": "Ogni 7 giorni", "mese": "Una volta al mese", "data": "In una data precisa",
+    "task": "Task", "consulenza": "Consulenza", "admin": "Amministratore", "membro": "Membro",
 }
 
 
@@ -197,19 +198,24 @@ add(Resource(
         "all_day": ("bool", "Tutto il giorno", None), "location": ("text", "Luogo", None),
         "customer_id": ("fk", "Cliente", "customers"), "project_id": ("fk", "Progetto", "projects"),
         "notes": ("longtext", "Note", None), "visibility": ("enum", "Visibilità", VIS),
+        "recurrence_unit": ("enum", "Ripeti", RECURRENCE), "recurrence_every": ("int", "Ogni", (1, 1000)),
+        "recurrence_until": ("date", "Fino al", None), "series": ("text", "Serie di riunioni", None),
     },
     required=("title", "start"),
     select=f"""SELECT e.*, p.name AS project_name, p.color AS project_color,
         cu.name AS customer_name, cu.code AS customer_code,
         (SELECT id FROM meetings m WHERE m.event_id = e.id ORDER BY m.id LIMIT 1) AS meeting_id,
+        (SELECT COUNT(*) FROM events e2 WHERE e2.recurrence_group = e.recurrence_group) AS occurrences,
+        (SELECT COUNT(*) FROM events e2 WHERE e2.recurrence_group = e.recurrence_group AND (e2.start < e.start OR (e2.start = e.start AND e2.id <= e.id))) AS occurrence_index,
         {_att('events', 'e')}
         FROM events e LEFT JOIN projects p ON p.id = e.project_id
         LEFT JOIN customers cu ON cu.id = COALESCE(e.customer_id, p.customer_id)""",
     order="e.start, e.id", search=("title", "location", "notes"),
     customer_col="COALESCE(e.customer_id, p.customer_id)", date_col="e.start", date_end_col="COALESCE(NULLIF(e.\"end\", ''), e.start)",
     visibility="team",
-    form=[["title"], ["start", "end"], ["all_day", "location"], ["customer_id", "project_id"], ["visibility"], ["notes"]],
-    defaults={"visibility": "team"},
+    form=[["title"], ["start", "end"], ["all_day", "location"], ["recurrence_unit", "recurrence_every", "recurrence_until"],
+          ["customer_id", "project_id"], ["series", "visibility"], ["notes"]],
+    defaults={"visibility": "team", "recurrence_unit": "nessuna", "recurrence_every": 1},
 ))
 
 add(Resource(
@@ -219,8 +225,8 @@ add(Resource(
         "date": ("datetime", "Data", None),
         "customer_id": ("fk", "Cliente", "customers"), "project_id": ("fk", "Progetto", "projects"),
         "event_id": ("fk", "Appuntamento", "events"),
-        "attendees": ("longtext", "Partecipanti", None), "agenda": ("longtext", "Ordine del giorno", None),
-        "discussion": ("longtext", "Discussione", None), "decisions": ("longtext", "Decisioni", None),
+        "attendees": ("longtext", "Partecipanti", "rich"), "agenda": ("longtext", "Ordine del giorno", "rich"),
+        "discussion": ("longtext", "Discussione", "rich"), "decisions": ("longtext", "Decisioni", "rich"),
         "next_meeting": ("text", "Prossimo incontro", None), "visibility": ("enum", "Visibilità", VIS),
         "status": ("enum", "Stato", ("attiva", "chiusa")),
     },
@@ -245,7 +251,10 @@ add(Resource(
         "date_start": ("date", "Data", None), "date_end": ("date", "Fino al", None),
         "location": ("text", "Luogo", None),
         "status": ("enum", "Stato", ("pianificata", "in_corso", "chiusa")),
-        "closing_note": ("longtext", "Nota di chiusura", None),
+        "closing_note": ("longtext", "Nota di chiusura", "rich"),
+        "next_mode": ("enum", "Prossima consulenza", ("nessuna", "settimana", "mese", "data")),
+        "next_date": ("date", "Data della prossima", None),
+        "carry_open": ("bool", "Porta le attività non chiuse nella prossima consulenza del consulente", None),
     },
     required=("date_start",),
     select=f"""SELECT cn.*, co.name AS consultant_name, co.company AS consultant_company,
@@ -262,6 +271,23 @@ add(Resource(
     order="cn.date_start DESC, cn.id DESC", title="location",
     search=("location", "closing_note"), customer_col="cn.customer_id",
     date_col="cn.date_start", date_end_col="COALESCE(cn.date_end, cn.date_start)", no_create=True,
+))
+
+add(Resource(
+    "procedures", "Procedura", "pr",
+    fields={
+        "title": ("text", "Titolo", None), "category": ("text", "Categoria", None),
+        "tags": ("text", "Etichette (separate da virgola)", None), "body": ("longtext", "Testo", "rich"),
+        "customer_id": ("fk", "Cliente (facoltativo)", "customers"), "pinned": ("bool", "In evidenza", None),
+        "visibility": ("enum", "Visibilità", VIS),
+    },
+    required=("title",),
+    select=f"""SELECT pr.*, cu.name AS customer_name, cu.code AS customer_code, {_att('procedures', 'pr')}
+        FROM procedures pr LEFT JOIN customers cu ON cu.id = pr.customer_id""",
+    order="pr.pinned DESC, casefold(pr.category), casefold(pr.title)",
+    search=("title", "category", "tags", "body"), customer_col="pr.customer_id", visibility="team",
+    form=[["title"], ["category", "tags"], ["body"], ["customer_id", "pinned"], ["visibility"]],
+    defaults={"visibility": "team"},
 ))
 
 add(Resource(
@@ -438,7 +464,7 @@ ATTACHMENT_TYPES = tuple(n for n, r in R.items() if r.attachments)
 TABLE_ORDER = (
     "users", "customers", "companies", "contacts", "projects", "events", "meetings", "tasks", "subtasks", "consultations",
     "changes", "change_freezes", "deadlines", "waiting_items", "inbox_items", "checklist_templates",
-    "checklist_runs", "sticky_notes", "time_entries",
+    "checklist_runs", "sticky_notes", "time_entries", "procedures",
 )
 
 

@@ -85,7 +85,7 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
       const c = document.createElement("canvas"); c.width = 40; c.height = 30; c.getContext("2d").fillRect(0, 0, 40, 30);
       const blob = await new Promise((r) => c.toBlob(r, "image/png"));
       const dt = new DataTransfer(); dt.items.add(new File([blob], "image.png", { type: "image/png" }));
-      const ta = document.getElementById("f-notes"); ta.focus(); ta.selectionStart = ta.value.length;
+      const ta = document.getElementById("f-notes"); ta.focus();
       ta.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
     });
     await page.waitForSelector(".paste-strip:not([hidden]) img");
@@ -186,6 +186,125 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     await page.click("text=Chiudi la serie");
     await page.click("dialog[open] >> text=Chiudi la serie"); await page.waitForTimeout(600);
     assert((await titles()).length === 0, "la serie non è stata chiusa");
+  });
+
+  await check("appuntamento ricorrente: crea, modifica i successivi, elimina", async () => {
+    await go("#/calendario");
+    await page.click(".page-head >> text=Appuntamento"); await page.waitForSelector("#panel.open #f-title");
+    await page.fill("#f-title", "SAL Delta");
+    await page.fill("#f-start", "2027-02-01T10:00"); await page.fill("#f-end", "2027-02-01T11:00");
+    await page.selectOption("#f-recurrence_unit", "settimane");
+    await page.fill("#f-recurrence_every", "1"); await page.fill("#f-recurrence_until", "2027-02-22");
+    await page.fill("#f-series", "SAL Delta");
+    await page.click("#panel button[type=submit]"); await page.waitForTimeout(700);
+    let evs = (await api("GET", "/api/events?q=Delta")).sort((a, b) => a.start.localeCompare(b.start));
+    assert(evs.length === 4 && evs.every((e) => e.series === "SAL Delta"), `ripetizioni: ${evs.length}`);
+    // dalla terza in poi: nuovo luogo
+    await page.evaluate(async (e) => (await import("/js/editors.js")).openEventEditor(e), evs[2]);
+    await page.waitForSelector("#panel.open .banner");
+    await page.fill("#f-location", "Sala A");
+    await page.click("#panel button[type=submit]");
+    await page.click("dialog[open] >> text=Questo e i successivi"); await page.waitForTimeout(600);
+    evs = (await api("GET", "/api/events?q=Delta")).sort((a, b) => a.start.localeCompare(b.start));
+    assert(JSON.stringify(evs.map((e) => e.location)) === JSON.stringify(["", "", "Sala A", "Sala A"]), `luoghi: ${evs.map((e) => e.location)}`);
+    // verbale dall'appuntamento: nasce nella serie
+    await go(`#/riunioni/new?event_id=${evs[0].id}`);
+    assert(await page.inputValue("#f-series") === "SAL Delta", "il verbale non eredita la serie");
+    // elimina questo e i successivi dalla seconda
+    await page.evaluate(async (e) => (await import("/js/editors.js")).openEventEditor(e), evs[1]);
+    await page.waitForSelector("#panel.open .banner");
+    await page.click("#panel .btn-danger");
+    await page.click("dialog[open] >> text=Questo e i successivi"); await page.waitForTimeout(600);
+    assert((await api("GET", "/api/events?q=Delta")).length === 1, "non eliminati i successivi");
+  });
+
+  await check("raggruppa verbali esistenti in una serie", async () => {
+    for (const t of ["Riunione A", "Riunione B", "Riunione C"]) await api("POST", "/api/meetings", { title: t });
+    await go("#/riunioni");
+    await page.click("text=Raggruppa in una serie…"); await page.waitForSelector("#panel.open #group-series");
+    await page.fill("#group-series", "Progetto Gamma");
+    for (const t of ["Riunione A", "Riunione B", "Riunione C"]) await page.check(`.series-pick:has-text("${t}") input`);
+    await click("#panel button[type=submit]");
+    const ms = (await api("GET", "/api/meetings")).filter((m) => m.title.startsWith("Riunione "));
+    assert(ms.length === 3 && ms.every((m) => m.series === "Progetto Gamma"), JSON.stringify(ms.map((m) => m.series)));
+  });
+
+  await check("procedure: testo con i simboli, cerca, codice copiabile, editor formattato", async () => {
+    // una procedura scritta con i simboli (come prima): si legge formattata
+    const p = await api("POST", "/api/procedures", { title: "Riavvio servizio NetEye", category: "NetEye", tags: "linux, servizi",
+      body: "# Passi\n1. Collegati al server\n2. Riavvia:\n```bash\nsystemctl restart neteye\n```\nControlla **sempre** i log con `journalctl -u neteye`." });
+    await go(`#/procedure/${p.id}`);
+    await page.waitForSelector(".proc-body .code-block");
+    assert((await page.textContent(".proc-body ol")).includes("Collegati al server"), "elenco non mostrato");
+    assert((await page.textContent(".proc-body strong")) === "sempre", "grassetto");
+    await go("#/procedure");
+    await page.fill(".filters input[type=search]", "journalctl"); await page.keyboard.press("Enter"); await page.waitForTimeout(500);
+    assert((await page.$$(".proc-card")).length === 1, "la ricerca nel testo non trova la procedura");
+    const res = await api("GET", "/api/search?q=systemctl");
+    assert(res.procedures && res.procedures.length === 1, "non compare nella ricerca generale");
+    // nell'editor il testo con i simboli diventa formattato; si aggiunge un blocco di codice dalla barra
+    await go(`#/procedure/${p.id}`);
+    await click(".page-head >> text=Modifica"); await page.waitForSelector("#panel.open #f-body");
+    assert(await page.$("#f-body h2") && await page.$("#f-body pre"), "il testo vecchio non è stato convertito");
+    await page.click("#f-body p:last-child"); await page.keyboard.press("End"); await page.keyboard.press("Enter");
+    await page.keyboard.type("tail -f /var/log/neteye.log");
+    await page.click('#panel .rt-btn[title^="Blocco di codice"]');
+    await click("#panel button[type=submit]");
+    const saved = await api("GET", `/api/procedures/${p.id}`);
+    assert(saved.body.startsWith("<h2>Passi</h2>") && saved.body.includes("<pre>tail -f /var/log/neteye.log</pre>"), saved.body);
+    assert((await page.$$(".proc-body .code-block")).length === 2, "il nuovo blocco non ha il pulsante Copia");
+  });
+
+  await check("verbale: grassetto, sottolineato e dimensione su singole parole", async () => {
+    const m = await api("POST", "/api/meetings", { title: "SAL formattato", discussion: "Testo scritto prima\nseconda riga" });
+    await go(`#/riunioni/${m.id}`);
+    await page.waitForSelector("#f-discussion");
+    assert((await page.innerHTML("#f-discussion")) === "<p>Testo scritto prima<br>seconda riga</p>", "testo vecchio non convertito");
+    await page.click("#f-discussion"); await page.keyboard.press("Control+End"); await page.keyboard.press("Enter");
+    await page.keyboard.type("Decisione importante ");
+    await page.keyboard.press("Control+b"); await page.keyboard.type("urgente"); await page.keyboard.press("Control+b");
+    await page.keyboard.type(" e ");
+    await page.keyboard.press("Control+u"); await page.keyboard.type("sottolineata"); await page.keyboard.press("Control+u");
+    // la parola «importante» più grande
+    await page.evaluate(() => {
+      const t = [...document.querySelectorAll("#f-discussion p")].pop().firstChild;
+      const r = document.createRange(); r.setStart(t, 10); r.setEnd(t, 20);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await page.selectOption(".rich[data-rich=discussion] .rt-size", "4");
+    await page.keyboard.press("Control+s"); await page.waitForTimeout(700);
+    const d = (await api("GET", `/api/meetings/${m.id}`)).discussion;
+    assert(d.includes("<b>urgente</b>") && d.includes("<u>sottolineata</u>") && d.includes('<span class="fs-l">importante</span>'), d);
+  });
+
+  await check("carattere dei documenti dal pulsante Aa", async () => {
+    const [p] = await api("GET", "/api/procedures");
+    await go(`#/procedure/${p.id}`);
+    await page.click(".font-btn > .btn");
+    await page.selectOption(".font-pop select", "georgia");
+    await page.click(".font-pop >> text=A+"); await page.click(".font-pop >> text=A+");
+    const st = await page.$eval(".proc-body", (el) => [getComputedStyle(el.querySelector("p")).fontFamily, el.style.getPropertyValue("--doc-size")]);
+    assert(st[0].includes("Georgia") && st[1] === "16px", `stile: ${st}`);
+    await page.click(".font-pop >> text=Ripristina");
+  });
+
+  await check("consulenza: riordino attività e prossima consulenza con attività riportate", async () => {
+    const [sara] = await api("GET", "/api/contacts?q=Neri");
+    const c = await api("POST", "/api/consultations", { consultant_id: sara.id, date_start: "2027-04-06",
+      activities: [{ title: "Primo" }, { title: "Secondo", done: true }, { title: "Terzo" }] });
+    await go("#/consulenze");
+    await page.evaluate(async (id) => (await import("/js/editors.js")).openConsultationEditor({ id }), c.id);
+    await page.waitForSelector("#panel.open .subtask");
+    const third = page.locator(".subtask textarea.line:not(.outcome)").nth(2);
+    await third.focus(); await page.keyboard.press("Alt+ArrowUp"); await page.keyboard.press("Alt+ArrowUp");
+    await page.selectOption("#f-next_mode", "settimana");
+    await page.click("#panel button:has-text(\"Chiudi giornata\")"); await page.waitForTimeout(900);
+    const all = await api("GET", "/api/consultations");
+    const next = all.find((x) => x.date_start === "2027-04-13");
+    assert(next && next.consultant_id === sara.id && next.next_mode === "settimana", `prossima consulenza non creata: ${await toasts()} ${JSON.stringify(all.map((x) => [x.date_start, x.status, x.next_mode]))}`);
+    const full = await api("GET", `/api/consultations/${next.id}`);
+    assert(JSON.stringify(full.activities.map((a) => a.title)) === JSON.stringify(["Terzo", "Primo"]), `attività riportate: ${full.activities.map((a) => a.title)}`);
+    assert((await toasts()).some((t) => t.includes("2 attività riportate")), "manca l'avviso");
   });
 
   await check("nessun errore JavaScript", async () => { assert(!errors.length, errors.join(" | ")); });

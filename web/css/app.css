@@ -51,6 +51,8 @@
   --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   --pad: 16px;
   --row: 44px;
+  --selection: color-mix(in srgb, var(--accent) 28%, #ffffff);
+  --selection-ink: var(--ink);
   color-scheme: light;
 }
 :root[data-density="compatta"] { --pad: 12px; --row: 36px; }
@@ -188,7 +190,8 @@ p { margin: 0 0 8px; }
 .hidden, [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 :focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
-::selection { background: var(--accent-soft); }
+/* selezione del testo: tinta dell'accento, abbastanza forte da vedersi anche nei temi scuri */
+::selection { background: var(--selection); color: var(--selection-ink); }
 
 /* ------------------------------------------------------------------ cornice */
 .app { display: flex; min-height: 100vh; }
@@ -695,3 +698,74 @@ th.sortable.on .arrow { opacity: 1; }
 .theme-sw { width: 34px; height: 22px; border-radius: 6px; flex: none; border: 1px solid rgba(0, 0, 0, .15);
   background: linear-gradient(90deg, var(--c) 0 30%, var(--a) 30% 70%, var(--b) 70% 100%); }
 .item.closed .t-title { color: var(--muted); }
+
+/* selezione nei temi scuri (scuro, smeraldo e versioni scure dei tenui) */
+:root[data-theme="dark"], :root[data-theme="smeraldo"] { --selection: color-mix(in srgb, var(--accent) 75%, #ffffff); --selection-ink: #0b0f14; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]), :root[data-theme="salvia"], :root[data-theme="lavanda"], :root[data-theme="sabbia"] {
+    --selection: color-mix(in srgb, var(--accent) 75%, #ffffff); --selection-ink: #0b0f14;
+  }
+}
+.series-pick { min-height: 32px; align-items: flex-start; } .series-pick input { margin-top: 3px; }
+
+/* ------------------------------------------------------------------ carattere dei documenti */
+.doc-font textarea, .doc-font .doc-body, .doc-font.doc-body, .doc-font .subtask textarea { font-family: var(--doc-font); font-size: var(--doc-size); }
+.doc-font .doc-body pre, .doc-font .doc-body code, .doc-font.doc-body pre, .doc-font.doc-body code { font-size: calc(var(--doc-size) * .9); }
+.font-btn { position: relative; display: inline-flex; }
+.font-pop { position: absolute; z-index: 70; top: calc(100% + 6px); right: 0; width: 320px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow-lg); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.font-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.font-controls select { flex: 1 1 180px; width: auto; }
+.font-step { display: inline-flex; align-items: center; gap: 6px; }
+.font-size { min-width: 2ch; text-align: center; }
+.subtask { grid-template-columns: 16px 20px 1fr auto; }
+.subtask .outcome { grid-column: 3 / 5; }
+.subtask .grip { cursor: grab; color: var(--faint); display: grid; place-items: center; margin-top: 6px; }
+.subtask .grip svg { width: 14px; height: 14px; }
+.subtask.dragging { opacity: .5; }
+.next-cons { border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+
+/* ------------------------------------------------------------------ procedure */
+.proc-card { display: flex; flex-direction: column; gap: 8px; cursor: pointer; }
+.proc-card:hover { box-shadow: var(--shadow-lg); }
+.proc-card h3 { font-size: 15px; }
+.proc-excerpt { margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.tag { font-size: 12px; color: var(--info-ink); }
+.chips-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 14px; }
+.chip-btn { border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); border-radius: 99px; padding: 4px 12px; font: 500 12.5px var(--font); cursor: pointer; }
+.chip-btn.on { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); font-weight: 650; }
+.doc-body { line-height: 1.6; max-width: 92ch; }
+.doc-body h2 { font-size: 1.35em; margin: 18px 0 8px; } .doc-body h3 { font-size: 1.15em; margin: 16px 0 6px; } .doc-body h4 { font-size: 1em; margin: 14px 0 4px; }
+.doc-body > :first-child { margin-top: 0; }
+.doc-body p { margin: 0 0 10px; white-space: pre-wrap; }
+.doc-body ul, .doc-body ol { margin: 0 0 10px; padding-left: 22px; }
+.doc-body li { margin: 2px 0; }
+.doc-body code { font-family: var(--mono); background: var(--surface-3); border-radius: 4px; padding: 1px 5px; font-size: .9em; }
+.code-block { border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; margin: 0 0 12px; }
+.code-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.code-block pre { margin: 0; padding: 12px 14px; overflow-x: auto; background: var(--surface-3); }
+.code-block pre code { background: none; padding: 0; white-space: pre; }
+
+/* ------------------------------------------------------------------ testo formattato */
+.rich { display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--surface); min-width: 0; }
+.rich:focus-within { outline: 2px solid color-mix(in srgb, var(--info) 55%, transparent); border-color: var(--info); }
+.rt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px; border-bottom: 1px solid var(--line); background: var(--surface-2); border-radius: var(--r-sm) var(--r-sm) 0 0; }
+.rt-btn { min-width: 30px; height: 28px; padding: 0 7px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 600 13px var(--font); cursor: pointer; }
+.rt-btn:hover { background: var(--surface-3); }
+.rt-btn.rt-h { font-weight: 800; }
+.rt-btn.rt-code { font-family: var(--mono); font-size: 12px; }
+.rt-mark { background: #fde68a; color: #1d2329; border-radius: 3px; padding: 0 2px; }
+.rt-size { width: auto; min-height: 28px; height: 28px; padding: 0 6px; font-size: 12.5px; border-color: var(--line); background: var(--surface); }
+.rt-sep { width: 1px; height: 18px; background: var(--line-strong); margin: 0 4px; }
+.rich-area { min-height: 90px; padding: 8px 10px; outline: none; color: var(--ink); line-height: 1.5; overflow-wrap: anywhere; font-weight: 400; font-size: 14px; }
+.rich-area.empty::before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
+.doc-font .rich-area { font-family: var(--doc-font); font-size: var(--doc-size); }
+.rich-area p, .doc-body p, .rich-print p { margin: 0 0 6px; }
+.rich-area ul, .rich-area ol, .doc-body ul, .doc-body ol { margin: 0 0 6px; padding-left: 22px; }
+.rich-area h2 { font-size: 1.3em; margin: 10px 0 6px; } .rich-area h3 { font-size: 1.12em; margin: 8px 0 4px; }
+.rich-area pre { font-family: var(--mono); font-size: .9em; background: var(--surface-3); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; margin: 0 0 6px; }
+.rich-area code, .rich-print code { font-family: var(--mono); background: var(--surface-3); border-radius: 4px; padding: 1px 4px; font-size: .9em; }
+.rich-area mark, .doc-body mark, .rich-print mark { background: #fde68a; color: #1d2329; border-radius: 2px; padding: 0 1px; }
+.fs-s { font-size: .82em; } .fs-l { font-size: 1.3em; } .fs-xl { font-size: 1.65em; line-height: 1.25; }
+.plain-text { white-space: pre-wrap; }
+.doc .form .rich-area { min-height: 120px; }
+.doc .form .doc-big .rich-area { min-height: 42vh; }

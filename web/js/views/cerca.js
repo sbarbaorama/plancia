@@ -11,6 +11,7 @@ const GROUPS = [
   ["customers", "Clienti", (x) => { location.hash = `#/clienti/${x.id}`; }], ["contacts", "Contatti", openContactEditor],
   ["changes", "Modifiche", openChangeEditor], ["deadlines", "Scadenze", openDeadlineEditor], ["waiting_items", "Attese", openWaitingEditor],
   ["consultations", "Consulenze", openConsultationEditor], ["sticky_notes", "Post-it", openNoteEditor],
+  ["procedures", "Procedure", (x) => { location.hash = `#/procedure/${x.id}`; }],
   ["inbox_items", "Inbox", () => { location.hash = "#/inbox"; }], ["checklist_templates", "Checklist", () => { location.hash = "#/checklist"; }],
   ["change_freezes", "Periodi di blocco", () => { location.hash = "#/modifiche?tab=blocchi"; }],
   ["attachments", "Allegati", (x) => window.open(x.kind === "file" ? `/api/attachments/${x.id}/file` : x.url, "_blank", "noopener")],

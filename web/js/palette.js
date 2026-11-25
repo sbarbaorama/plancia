@@ -18,6 +18,7 @@ const KIND = {
   consultations: ["Consulenza", (x) => openConsultationEditor(x)], inbox_items: ["Inbox", () => { location.hash = "#/inbox"; }],
   checklist_templates: ["Checklist", () => { location.hash = "#/checklist"; }], change_freezes: ["Blocco", () => { location.hash = "#/modifiche?tab=blocchi"; }],
   time_entries: ["Ore", () => { location.hash = "#/ore"; }],
+  procedures: ["Procedura", (x) => { location.hash = `#/procedure/${x.id}`; }],
   attachments: ["Allegato", (x) => { window.open(x.kind === "file" ? `/api/attachments/${x.id}/file` : x.url, "_blank", "noopener"); }],
 };
 const titleOf = (x) => x.title || x.name || x.text || x.location || x.note || "";

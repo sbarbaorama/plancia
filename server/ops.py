@@ -310,6 +310,14 @@ def _consultation_task_fields(conn, data, consultant):
             "notes": data.get("notes") or ""}
 
 
+def _check_next(merged):
+    if merged.get("next_mode") == "data":
+        if not merged.get("next_date"):
+            raise ValidationError("Prossima consulenza: indica la data")
+        if merged["next_date"] <= (merged.get("date_end") or merged["date_start"]):
+            raise ValidationError("La prossima consulenza deve essere dopo questa")
+
+
 def create_consultation(conn, data, ctx=LOCAL):
     if not isinstance(data, dict):
         raise ValidationError("Dati non validi")
@@ -320,6 +328,7 @@ def create_consultation(conn, data, ctx=LOCAL):
             raise ValidationError("Consulente: campo obbligatorio")
         if rec.get("date_end") and rec["date_end"] < rec["date_start"]:
             raise ValidationError("La fine non può essere prima dell'inizio")
+        _check_next(rec)
         task = crud.create_item(conn, "tasks", {**_consultation_task_fields(conn, {**data, **rec}, consultant)}, ctx)
         conn.execute("UPDATE tasks SET kind = 'consulenza' WHERE id = ?", (task["id"],))
         rec.update(task_id=task["id"], created_at=now_iso(), updated_at=now_iso())
@@ -337,6 +346,7 @@ def update_consultation(conn, cid, data, ctx=LOCAL):
         merged = {**cons, **rec, **{k: data[k] for k in ("title", "project_id", "notes") if k in data}}
         if merged.get("date_end") and merged["date_end"] < merged["date_start"]:
             raise ValidationError("La fine non può essere prima dell'inizio")
+        _check_next(merged)
         rec["updated_at"] = now_iso()
         crud._update(conn, "consultations", cons["id"], rec)
         consultant = get_item(conn, "contacts", merged["consultant_id"]) if merged.get("consultant_id") else None
@@ -347,13 +357,79 @@ def update_consultation(conn, cid, data, ctx=LOCAL):
     return get_item(conn, "consultations", cons["id"])
 
 
+def next_consultation_date(cons):
+    """La data della prossima consulenza secondo la regola scelta (None = nessuna)."""
+    start = date.fromisoformat(cons["date_start"])
+    mode = cons.get("next_mode") or "nessuna"
+    if mode == "settimana":
+        return start + timedelta(days=7)
+    if mode == "mese":
+        return crud.add_interval(start, "mesi", 1)
+    if mode == "data" and cons.get("next_date"):
+        return date.fromisoformat(cons["next_date"])
+    return None
+
+
+def _carry_activities(conn, cons, target, ctx):
+    """Copia nella consulenza target le attività non chiuse (senza doppioni). Restituisce quante."""
+    open_acts = [s for s in list_subtasks(conn, cons["task_id"]) if not s["done"]]
+    if not open_acts:
+        return 0
+    current = list_subtasks(conn, target["task_id"])
+    have = {s["title"].casefold() for s in current}
+    new = [{"title": s["title"], "outcome": s["outcome"]} for s in open_acts if s["title"].casefold() not in have]
+    if new:
+        set_subtasks(conn, target["task_id"], [{"id": s["id"], "title": s["title"], "done": s["done"], "outcome": s["outcome"]}
+                                               for s in current] + new, ctx)
+    return len(new)
+
+
+def _clean_note(note, current):
+    from . import richtext
+    note = str(note or current or "")
+    return richtext.sanitize(note) if richtext.is_rich(note) else note[:50000]
+
+
 def close_consultation(conn, cid, note, ctx=LOCAL):
+    """Chiude la giornata. Se c'è una regola, nasce la prossima consulenza; le attività non chiuse
+    passano alla prossima consulenza dello stesso consulente (nuova o già pianificata)."""
     with transaction(conn):
         cons = get_item(conn, "consultations", cid)
         conn.execute("UPDATE consultations SET status = 'chiusa', closing_note = ?, closed_at = ?, updated_at = ? WHERE id = ?",
-                     (str(note or cons["closing_note"] or "")[:20000], now_iso(), now_iso(), cons["id"]))
+                     (_clean_note(note, cons["closing_note"]), now_iso(), now_iso(), cons["id"]))
         crud.update_item(conn, "tasks", cons["task_id"], {"status": "chiuso"}, ctx)
-    return get_item(conn, "consultations", cons["id"])
+        target, created = None, False
+        if cons.get("next_id"):
+            row = conn.execute("SELECT id FROM consultations WHERE id = ?", (cons["next_id"],)).fetchone()
+            target = get_item(conn, "consultations", row[0]) if row else None
+        when = next_consultation_date(cons)
+        if target is None and when and cons.get("consultant_id"):
+            row = conn.execute("SELECT id FROM consultations WHERE consultant_id = ? AND id != ? AND date_start = ?",
+                               (cons["consultant_id"], cons["id"], when.isoformat())).fetchone()
+            target = get_item(conn, "consultations", row[0]) if row else None
+        if target is None and when:
+            days = (date.fromisoformat(cons["date_end"]) - date.fromisoformat(cons["date_start"])).days if cons["date_end"] else 0
+            target = create_consultation(conn, {
+                "consultant_id": cons["consultant_id"], "customer_id": cons["customer_id"], "location": cons["location"],
+                "date_start": when.isoformat(), "date_end": (when + timedelta(days=days)).isoformat() if days else None,
+                "title": cons["title"], "project_id": cons["project_id"], "carry_open": bool(cons["carry_open"]),
+                # «ogni 7 giorni» e «una volta al mese» continuano; la data precisa vale una volta sola
+                "next_mode": cons["next_mode"] if cons["next_mode"] in ("settimana", "mese") else "nessuna",
+            }, ctx)
+            created = True
+        if target is None and cons["carry_open"] and cons.get("consultant_id"):
+            row = conn.execute("""SELECT id FROM consultations WHERE consultant_id = ? AND id != ? AND status != 'chiusa'
+                                  AND (date_start > ? OR (date_start = ? AND id > ?)) ORDER BY date_start, id LIMIT 1""",
+                               (cons["consultant_id"], cons["id"], cons["date_start"], cons["date_start"], cons["id"])).fetchone()
+            target = get_item(conn, "consultations", row[0]) if row else None
+        carried = _carry_activities(conn, cons, target, ctx) if target and cons["carry_open"] else 0
+        if target:
+            conn.execute("UPDATE consultations SET next_id = ? WHERE id = ?", (target["id"], cons["id"]))
+        out = get_item(conn, "consultations", cons["id"])
+        out["next"] = get_item(conn, "consultations", target["id"]) if target else None
+        out["next_created"] = created
+        out["carried"] = carried
+    return out
 
 
 def reopen_consultation(conn, cid, ctx=LOCAL):

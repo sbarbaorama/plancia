@@ -47,7 +47,7 @@ export async function render(root, ctx) {
 
   const chip = (it) => {
     if (it.kind === "ev") return h("div", { class: "cal-item", title: it.e.title, onclick: (x) => { x.stopPropagation(); openEventEditor(it.e, { onSave: reload }); } },
-      it.e.all_day ? "" : `${it.e.start.slice(11, 16)} `, it.e.title);
+      it.e.all_day ? "" : `${it.e.start.slice(11, 16)} `, it.e.recurrence_group ? "↻ " : "", it.e.title);
     if (it.kind === "task") return h("div", { class: `cal-item task ${it.t.due_date < todayISO() ? "late" : ""}`, title: it.t.title, onclick: (x) => { x.stopPropagation(); openTaskEditor(it.t, { onSave: reload }); } }, "☐ ", it.t.title);
     if (it.kind === "cons") return h("div", { class: "cal-item cons", onclick: (x) => { x.stopPropagation(); openConsultationEditor(it.c, { onSave: reload }); } }, `Consulenza ${it.c.consultant_name || ""}`);
     if (it.kind === "change") return h("div", { class: "cal-item change", onclick: (x) => { x.stopPropagation(); openChangeEditor(it.c, { onSave: reload }); } }, `⇄ ${it.c.title}`);
@@ -108,7 +108,7 @@ export async function render(root, ctx) {
           class: `wev ${it.kind === "change" ? "change" : ""}`,
           style: { top: `${top}px`, height: `${Math.max(18, (endMin - startMin) / 60 * PX - 2)}px`, left: `${(p.col / p.cols) * 100}%`, width: `${100 / p.cols}%` },
           onclick: () => it.kind === "ev" ? openEventEditor(it.e, { onSave: reload }) : openChangeEditor(it.c, { onSave: reload }),
-        }, h("b", {}, it.kind === "ev" ? it.e.title : `⇄ ${it.c.title}`), h("div", {}, `${String(Math.floor(startMin / 60)).padStart(2, "0")}:${String(startMin % 60).padStart(2, "0")}`)));
+        }, h("b", {}, it.kind === "ev" ? `${it.e.recurrence_group ? "↻ " : ""}${it.e.title}` : `⇄ ${it.c.title}`), h("div", {}, `${String(Math.floor(startMin / 60)).padStart(2, "0")}:${String(startMin % 60).padStart(2, "0")}`)));
       }
       grid.append(col);
     }
