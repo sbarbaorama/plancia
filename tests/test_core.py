@@ -182,6 +182,42 @@ class CrudTest(Base):
         with self.assertRaises(crud.ValidationError):
             crud.create_item(self.conn, "events", {"title": "X", "start": "2027-03-10", "recurrence_unit": "giorni", "recurrence_until": "2027-03-01"})
 
+    def test_consultation_recurring_and_carry(self):
+        co = self.mk("contacts", name="Luca Neri", is_consultant=True)
+        acts = [{"title": "Upgrade NetEye", "done": True}, {"title": "Soglie dischi", "outcome": "metà host"}, {"title": "Report"}]
+        c = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2026-12-01", "next_mode": "settimana", "activities": acts})
+        r = ops.close_consultation(self.conn, c["id"], "")
+        self.assertTrue(r["next_created"])
+        self.assertEqual(r["next"]["date_start"], "2026-12-08")
+        self.assertEqual(r["next"]["next_mode"], "settimana")
+        subs = ops.list_subtasks(self.conn, r["next"]["task_id"])
+        self.assertEqual([(s["title"], s["outcome"]) for s in subs], [("Soglie dischi", "metà host"), ("Report", "")])
+        # chiusa, riaperta e richiusa: nessuna consulenza nuova e nessun doppione
+        ops.reopen_consultation(self.conn, c["id"])
+        r2 = ops.close_consultation(self.conn, c["id"], "")
+        self.assertFalse(r2["next_created"])
+        self.assertEqual(r2["next"]["id"], r["next"]["id"])
+        self.assertEqual(len(ops.list_subtasks(self.conn, r["next"]["task_id"])), 2)
+        # una volta al mese
+        m = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-01-31", "next_mode": "mese"})
+        self.assertEqual(ops.close_consultation(self.conn, m["id"], "")["next"]["date_start"], "2027-02-28")
+        # data precisa: vale una volta sola
+        d = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-03-01", "next_mode": "data", "next_date": "2027-03-20"})
+        nd = ops.close_consultation(self.conn, d["id"], "")["next"]
+        self.assertEqual((nd["date_start"], nd["next_mode"]), ("2027-03-20", "nessuna"))
+        with self.assertRaises(crud.ValidationError):
+            ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-03-01", "next_mode": "data"})
+        # senza regola: le attività aperte vanno nella prossima già pianificata del consulente
+        a = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-05-01", "activities": [{"title": "Backup"}]})
+        b = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-05-10", "activities": [{"title": "Patch"}]})
+        rb = ops.close_consultation(self.conn, a["id"], "")
+        self.assertEqual((rb["next"]["id"], rb["carried"], rb["next_created"]), (b["id"], 1, False))
+        self.assertEqual([s["title"] for s in ops.list_subtasks(self.conn, b["task_id"])], ["Patch", "Backup"])
+        # senza «porta le attività»: nulla
+        x = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-06-01", "carry_open": False, "activities": [{"title": "Z"}]})
+        ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-06-08"})
+        self.assertEqual(ops.close_consultation(self.conn, x["id"], "")["carried"], 0)
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])

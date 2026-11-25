@@ -229,6 +229,53 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     assert(ms.length === 3 && ms.every((m) => m.series === "Progetto Gamma"), JSON.stringify(ms.map((m) => m.series)));
   });
 
+  await check("procedure: scrivi, cerca, copia il codice", async () => {
+    await go("#/procedure");
+    await page.click(".page-head >> text=Nuova procedura"); await page.waitForSelector("#panel.open #f-title");
+    await page.fill("#f-title", "Riavvio servizio NetEye");
+    await page.fill("#f-category", "NetEye"); await page.fill("#f-tags", "linux, servizi");
+    await page.fill("#f-body", "# Passi\n1. Collegati al server\n2. Riavvia:\n```bash\nsystemctl restart neteye\n```\nControlla **sempre** i log con `journalctl -u neteye`.");
+    await click("#panel button[type=submit]");
+    await page.waitForSelector(".proc-body .code-block");
+    assert((await page.textContent(".proc-body ol")).includes("Collegati al server"), "elenco non mostrato");
+    assert((await page.textContent(".proc-body strong")) === "sempre", "grassetto");
+    await go("#/procedure");
+    await page.fill(".filters input[type=search]", "journalctl"); await page.keyboard.press("Enter"); await page.waitForTimeout(500);
+    assert((await page.$$(".proc-card")).length === 1, "la ricerca nel testo non trova la procedura");
+    const res = await api("GET", "/api/search?q=systemctl");
+    assert(res.procedures && res.procedures.length === 1, "non compare nella ricerca generale");
+  });
+
+  await check("carattere dei documenti dal pulsante Aa", async () => {
+    const [p] = await api("GET", "/api/procedures");
+    await go(`#/procedure/${p.id}`);
+    await page.click(".font-btn > .btn");
+    await page.selectOption(".font-pop select", "georgia");
+    await page.click(".font-pop >> text=A+"); await page.click(".font-pop >> text=A+");
+    const st = await page.$eval(".proc-body", (el) => [getComputedStyle(el.querySelector("p")).fontFamily, el.style.getPropertyValue("--doc-size")]);
+    assert(st[0].includes("Georgia") && st[1] === "16px", `stile: ${st}`);
+    await page.click(".font-pop >> text=Ripristina");
+  });
+
+  await check("consulenza: riordino attività e prossima consulenza con attività riportate", async () => {
+    const [sara] = await api("GET", "/api/contacts?q=Neri");
+    const c = await api("POST", "/api/consultations", { consultant_id: sara.id, date_start: "2027-04-06",
+      activities: [{ title: "Primo" }, { title: "Secondo", done: true }, { title: "Terzo" }] });
+    await go("#/consulenze");
+    await page.evaluate(async (id) => (await import("/js/editors.js")).openConsultationEditor({ id }), c.id);
+    await page.waitForSelector("#panel.open .subtask");
+    const third = page.locator(".subtask textarea.line:not(.outcome)").nth(2);
+    await third.focus(); await page.keyboard.press("Alt+ArrowUp"); await page.keyboard.press("Alt+ArrowUp");
+    await page.selectOption("#f-next_mode", "settimana");
+    await page.click("#panel button:has-text(\"Chiudi giornata\")"); await page.waitForTimeout(900);
+    const all = await api("GET", "/api/consultations");
+    const next = all.find((x) => x.date_start === "2027-04-13");
+    assert(next && next.consultant_id === sara.id && next.next_mode === "settimana", `prossima consulenza non creata: ${await toasts()} ${JSON.stringify(all.map((x) => [x.date_start, x.status, x.next_mode]))}`);
+    const full = await api("GET", `/api/consultations/${next.id}`);
+    assert(JSON.stringify(full.activities.map((a) => a.title)) === JSON.stringify(["Terzo", "Primo"]), `attività riportate: ${full.activities.map((a) => a.title)}`);
+    assert((await toasts()).some((t) => t.includes("2 attività riportate")), "manca l'avviso");
+  });
+
   await check("nessun errore JavaScript", async () => { assert(!errors.length, errors.join(" | ")); });
   await browser.close();
   console.log(JSON.stringify(results));

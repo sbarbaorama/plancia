@@ -3,6 +3,7 @@ import { del, get, post, put, qs } from "../api.js";
 import { setLeaveGuard } from "../app.js";
 import { attachmentsBox } from "../attachments.js";
 import { field, readForm } from "../form.js";
+import { applyFont, fontButton, printFontStyle } from "../fonts.js";
 import { imagesOf, pasteImages, richText } from "../paste.js";
 import { meetingRow, setMeetingStatus, taskRow } from "../rows.js";
 import {
@@ -109,6 +110,7 @@ async function renderDoc(root, ctx) {
     h("div", { class: "doc-pair" }, field("decisions", F.decisions, m.decisions, fk), field("next_meeting", F.next_meeting, m.next_meeting, fk)));
   if (isTeam()) form.append(field("visibility", F.visibility, m.visibility, fk));
   const pasted = pasteImages(form, "meetings", isNew ? null : m.id);
+  applyFont(form, "verbali");
 
   // azioni
   const rowsBox = h("div", { class: "action-list" });
@@ -193,6 +195,7 @@ async function renderDoc(root, ctx) {
         setLeaveGuard(null);
         location.hash = "#/riunioni";
       } }, "Elimina") : null,
+      fontButton("verbali"),
       h("button", { class: "btn focus-btn", type: "button", onclick: toggleFocus, title: "Nasconde menu e barra in alto e porta il verbale a schermo intero" }, icon("maximize"), h("span", { class: "on-off" }, "Schermo intero")),
       h("button", { class: "btn btn-primary", type: "button", onclick: () => save() }, "Salva ", h("kbd", {}, "Ctrl S"))),
     !isNew && m.status === "chiusa" ? h("div", { class: "banner" }, icon("archivio"),
@@ -231,7 +234,7 @@ async function print(m, actions) {
   const images = m.id ? await imagesOf("meetings", m.id) : [];
   const used = new Set();
   const rt = (t) => h("pre", {}, richText(t, images, used));
-  printDoc(
+  printDoc(h("div", { style: printFontStyle("verbali") },
     h("h1", {}, m.title),
     h("div", { class: "meta" }, [m.date ? fmtDateTime(m.date) : "", m.customer_name, m.project_name, m.series ? `Serie: ${m.series}` : ""].filter(Boolean).join(" · ")),
     m.attendees ? [h("h2", {}, "Partecipanti"), rt(m.attendees)] : null,
@@ -240,5 +243,5 @@ async function print(m, actions) {
     m.decisions ? [h("h2", {}, "Decisioni"), rt(m.decisions)] : null,
     actions.length ? [h("h2", {}, "Azioni"), h("table", {}, h("tr", {}, h("th", {}, "Azione"), h("th", {}, "Entro"), h("th", {}, "Stato")),
       actions.map((a) => h("tr", {}, h("td", {}, a.title), h("td", {}, a.due_date ? fmtDate(a.due_date, { year: true }) : ""), h("td", {}, label(a.status)))))] : null,
-    m.next_meeting ? [h("h2", {}, "Prossimo incontro"), h("pre", {}, m.next_meeting)] : null);
+    m.next_meeting ? [h("h2", {}, "Prossimo incontro"), h("pre", {}, m.next_meeting)] : null));
 }

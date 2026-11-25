@@ -2,6 +2,7 @@
 import { del, get, post, put } from "./api.js";
 import { attachmentsBox } from "./attachments.js";
 import { field, openEditor, readForm } from "./form.js";
+import { applyFont, fontButton, printFontStyle } from "./fonts.js";
 import { imagesOf, pasteImages, richText } from "./paste.js";
 import {
   addDays, autoGrow, choiceDialog, clear, closePanel, confirmDialog, copyText, fmtDate, fmtDateTime, h, icon, isTeam, label,
@@ -15,14 +16,44 @@ const changed = () => emit("changed");
 export function subtasksEditor(items = [], { outcome = true, placeholder = "Nuova attività…" } = {}) {
   const wrap = h("div", { class: "subtasks" });
   const rows = [];
+  let dragging = null;
+  /** Sposta un'attività alla posizione «to» (indice prima dello spostamento). */
+  const move = (ref, to) => {
+    const from = rows.indexOf(ref);
+    to = Math.max(0, Math.min(rows.length, to));
+    if (to === from || to === from + 1) return;
+    rows.splice(from, 1);
+    const at = to > from ? to - 1 : to;
+    rows.splice(at, 0, ref);
+    wrap.insertBefore(ref.row, rows[at + 1]?.row || addBtn);
+  };
   const addRow = (s = {}) => {
     const done = h("input", { type: "checkbox", checked: !!s.done, "aria-label": "Fatto" });
     const title = autoGrow(h("textarea", { rows: 1, class: "line", value: s.title || "", placeholder, maxlength: 300, "aria-label": "Attività" }));
     const out = outcome ? autoGrow(h("textarea", { rows: 1, class: "line outcome", value: s.outcome || "", placeholder: "Esito / note (facoltativo)", maxlength: 2000, "aria-label": "Esito" })) : null;
-    const row = h("div", { class: "subtask" }, done, title,
+    const grip = h("span", { class: "grip", title: "Trascina per spostare (oppure Alt+↑/↓ nel titolo)", "aria-hidden": "true" }, icon("grip"));
+    const row = h("div", { class: "subtask" }, grip, done, title,
       h("button", { class: "icon-btn", type: "button", "aria-label": "Togli", onclick: () => { row.remove(); rows.splice(rows.indexOf(ref), 1); } }, icon("x")), out);
     const ref = { id: s.id, done, title, out, row };
     rows.push(ref);
+    // trascinamento solo dalla maniglia, così nei campi di testo si può selezionare
+    grip.addEventListener("mousedown", () => { row.draggable = true; });
+    row.addEventListener("dragstart", (e) => { dragging = ref; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", ""); });
+    row.addEventListener("dragend", () => { row.draggable = false; row.classList.remove("dragging"); dragging = null; });
+    row.addEventListener("dragover", (e) => {
+      if (!dragging || dragging === ref) return;
+      e.preventDefault();
+      const after = e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
+      move(dragging, rows.indexOf(ref) + (after ? 1 : 0));
+    });
+    title.addEventListener("keydown", (e) => {
+      if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const i = rows.indexOf(ref);
+        move(ref, e.key === "ArrowUp" ? i - 1 : i + 2);
+        title.focus();
+      }
+    });
     title.addEventListener("keydown", (e) => {
       // Invio = nuova attività; Maiusc+Invio = a capo nella stessa
       if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); const n = addRow(); n.title.focus(); }
@@ -295,6 +326,7 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
   };
   const acts = subtasksEditor(full?.activities || [], { placeholder: "Attività della giornata…" });
   const form = h("form", { class: "form" },
+    h("div", { class: "row", style: { justifyContent: "flex-end", marginBottom: "-6px" } }, fontButton("consulenze")),
     h("div", { class: "form-row" }, field("consultant_id", fields.consultant_id, v.consultant_id, fk), field("customer_id", fields.customer_id, v.customer_id, fk)),
     field("title", extraFields.title, v.title || "", fk),
     h("div", { class: "form-row" }, field("date_start", fields.date_start, v.date_start, fk), field("date_end", fields.date_end, v.date_end, fk)),
@@ -302,8 +334,20 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
     h("div", { class: "field" }, h("span", { class: "small", style: { fontWeight: 600, color: "var(--muted)" } }, "Attività"), acts.node),
     field("closing_note", fields.closing_note, v.closing_note, fk),
     field("notes", extraFields.notes, v.notes, fk),
+    h("fieldset", { class: "card card-pad next-cons" },
+      h("legend", { class: "small", style: { fontWeight: 600 } }, "Prossima consulenza"),
+      h("div", { class: "form-row" }, field("next_mode", fields.next_mode, v.next_mode || "nessuna", fk), field("next_date", fields.next_date, v.next_date, fk)),
+      field("carry_open", fields.carry_open, v.carry_open ?? 1, fk),
+      h("p", { class: "hint" }, "Quando premi «Chiudi giornata» nasce la prossima consulenza con lo stesso consulente, cliente e luogo. "
+        + "Le attività non chiuse vengono copiate nella prossima consulenza del consulente (anche se l'hai già pianificata tu)."),
+      !isNew && full.next_id ? h("a", { class: "small", href: `#/consulenze?id=${full.next_id}`, onclick: () => closePanel() }, "Apri la consulenza successiva") : null),
     !isNew ? attachmentsBox("consultations", cons.id) : null);
   const all = { ...fields, ...extraFields };
+  const nextMode = form.elements.namedItem("next_mode");
+  const syncNext = () => { form.elements.namedItem("next_date").closest(".field").style.visibility = nextMode.value === "data" ? "" : "hidden"; };
+  nextMode.addEventListener("change", syncNext);
+  syncNext();
+  applyFont(form, "consulenze");
   const pasted = pasteImages(form, "consultations", isNew ? null : cons.id);
   const foot = h("div", { class: "panel-foot" },
     h("button", { class: "btn btn-primary", type: "submit" }, isNew ? "Crea" : "Salva"),
@@ -329,7 +373,11 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
       const saved = await put(`/api/consultations/${cons.id}`, await collect());
       const r = action === "close" ? await post(`/api/consultations/${cons.id}/close`, { closing_note: form.elements.namedItem("closing_note").value })
         : await post(`/api/consultations/${cons.id}/reopen`);
-      toast(action === "close" ? "Giornata chiusa" : "Riaperta", "ok");
+      if (action === "close") {
+        const n = r?.next;
+        toast(n ? `Giornata chiusa. ${r.next_created ? "Creata la prossima consulenza" : "Prossima consulenza"}: ${fmtDate(n.date_start, { weekday: true })}`
+          + (r.carried ? ` · ${r.carried === 1 ? "1 attività riportata" : `${r.carried} attività riportate`}` : "") : "Giornata chiusa", "ok", 6000);
+      } else toast("Riaperta", "ok");
       closePanel();
       onSave(r || saved);
     } catch (err) { showError(err); }
@@ -361,7 +409,7 @@ export async function printConsultation(c) {
   const notes = c.notes ? richText(c.notes, images, used) : null;
   const closing = c.closing_note ? richText(c.closing_note, images, used) : null;
   const rest = images.filter((a) => !used.has(a.name));
-  printDoc(
+  printDoc(h("div", { style: printFontStyle("consulenze") },
     h("h1", {}, "Rapportino di consulenza"),
     h("div", { class: "meta" }, `${fmtDate(c.date_start, { year: true })}${c.date_end && c.date_end !== c.date_start ? ` – ${fmtDate(c.date_end, { year: true })}` : ""}`,
       ` · Consulente: ${c.consultant_name || ""}${c.consultant_company ? ` (${c.consultant_company})` : ""}`,
@@ -372,7 +420,7 @@ export async function printConsultation(c) {
     notes ? [h("h2", {}, "Note"), h("pre", {}, notes)] : null,
     closing ? [h("h2", {}, "Note di chiusura"), h("pre", {}, closing)] : null,
     rest.length ? [h("h2", {}, "Immagini"), h("div", { class: "print-images" }, rest.map((a) => h("figure", {}, h("img", { src: `/api/attachments/${a.id}/file`, alt: a.name }), h("figcaption", {}, a.name))))] : null,
-    h("div", { class: "sign" }, h("div", {}, "Firma del consulente"), h("div", {}, "Firma per il cliente")));
+    h("div", { class: "sign" }, h("div", {}, "Firma del consulente"), h("div", {}, "Firma per il cliente"))));
 }
 
 // ------------------------------------------------------------------ menu "Nuovo"
@@ -385,6 +433,7 @@ export const NEW_ACTIONS = [
   ["Scadenza", "scadenze", () => openDeadlineEditor(null)],
   ["Attesa", "attese", () => openWaitingEditor(null)],
   ["Post-it", "note", () => openNoteEditor(null)],
+  ["Procedura", "procedure", () => import("./views/procedure.js").then((m) => m.openProcedureEditor(null))],
   ["Ore lavorate", "ore", () => openTimeEditor(null)],
   ["Cliente", "clienti", () => openCustomerEditor(null)],
   ["Contatto", "contatti", () => openContactEditor(null)],

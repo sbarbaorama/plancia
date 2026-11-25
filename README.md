@@ -36,7 +36,8 @@ Activity Desk e Plancia usano porte diverse (8765 e 8770): possono convivere fin
 | Lavoro | **Task** | Lista per scadenza o **Kanban** per stato (trascina tra le colonne). Ogni task ha cliente (anche senza progetto), progetto, priorità, inizio, scadenza, stima, sotto-task con esito, **ricorrenza** (chiudendolo si crea il successivo), allegati e storico delle modifiche |
 | | **Progetti** | Avanzamento, task, verbali, appuntamenti e documenti |
 | | **Riunioni** | Verbali da modello. Le **azioni diventano task**. Le riunioni con la stessa **serie** (es. "SAL CVM") mostrano le azioni ancora aperte delle precedenti. Con **Raggruppa in una serie…** metti in una serie anche verbali già scritti; **Prossima della serie** apre il verbale sul prossimo appuntamento della serie. I verbali si **chiudono** (uno alla volta o tutta la serie) e spariscono dall'elenco, che mostra di base solo quelli *Attivi*; con il filtro *Chiuse* o *Tutte* li ritrovi e li riapri. Stampa / PDF, Ctrl+S |
-| | **Consulenze** | Giornate con i consulenti: attività con esito, rapportino con le firme, riepilogo per la mail, duplica per la settimana dopo |
+| | **Consulenze** | Giornate con i consulenti: attività con esito (si riordinano trascinando la maniglia ⠿ o con Alt+↑/↓), rapportino con le firme, riepilogo per la mail. **Prossima consulenza**: ogni 7 giorni, una volta al mese o in una data precisa; con *Chiudi giornata* nasce la successiva e le attività non chiuse vengono copiate nella prossima consulenza del consulente |
+| | **Procedure** | Piccola documentazione da cercare e copiare: come si fa una cosa, come funziona uno script, i comandi da ricordare. Categorie, etichette, cliente; nel testo `# titoli`, elenchi, **grassetto**, `comandi` e blocchi di codice tra ``` con il pulsante *Copia*. *Copia tutto* copia il testo pulito. Si trovano anche con Ctrl K |
 | | **Note** | Post-it colorati con il campo **Comando** da copiare al volo (filtro "Solo comandi") |
 | | **Inbox** | Note veloci (casella in alto) da smistare con un clic in task, modifica, attesa, post-it o appuntamento |
 | Operazioni | **Modifiche** | Registro con piano di rollback ed esito (anche *rollback*), **calendario delle modifiche** e **periodi di blocco** (avviso se pianifichi una modifica dentro un blocco) |
@@ -59,6 +60,7 @@ Activity Desk e Plancia usano porte diverse (8765 e 8770): possono convivere fin
 - **Tabelle ordinabili**: clic sull'intestazione in Contatti, Ore e Archivio (vista *Tabella*).
 - **Incolla immagini** (Ctrl+V) nelle note, nelle consulenze, nei verbali e nel riquadro allegati: l'immagine diventa un allegato con anteprima e nel testo resta il segnaposto `[immagine: …]`, che nei post-it, nel rapportino e nel verbale stampati diventa l'immagine.
 - Le note e gli esiti delle attività **si allungano** man mano che scrivi (Maiusc+Invio va a capo nel titolo di un'attività).
+- **Carattere dei documenti**: con il pulsante **Aa** (o in *Impostazioni*) scegli tipo e dimensione del testo per Verbali, Consulenze e Procedure; vale anche per la stampa.
 - **Temi**: oltre a chiaro e scuro, tre tenui (Salvia, Lavanda, Sabbia, con versione scura automatica quando Windows è in modalità scura) e tre decisi (Cobalto, Corallo, Smeraldo scuro). In *Impostazioni → Aspetto* passando col mouse su un tema lo vedi subito, con un clic lo scegli.
 
 ### Comandi rapidi

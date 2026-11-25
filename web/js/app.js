@@ -9,7 +9,7 @@ import {
 
 export const NAV = [
   { title: "Pianifica", items: [["oggi", "Oggi"], ["pianifica", "Pianifica"], ["calendario", "Calendario"], ["timeline", "Timeline"]] },
-  { title: "Lavoro", items: [["task", "Task"], ["progetti", "Progetti"], ["riunioni", "Riunioni"], ["consulenze", "Consulenze"], ["note", "Note"], ["inbox", "Inbox"]] },
+  { title: "Lavoro", items: [["task", "Task"], ["progetti", "Progetti"], ["riunioni", "Riunioni"], ["consulenze", "Consulenze"], ["note", "Note"], ["procedure", "Procedure"], ["inbox", "Inbox"]] },
   { title: "Operazioni", items: [["modifiche", "Modifiche"], ["scadenze", "Scadenze"], ["attese", "In attesa di"], ["checklist", "Checklist"]] },
   { title: "Clienti", items: [["clienti", "Clienti"], ["contatti", "Contatti"]] },
   { title: "Resoconti", items: [["ore", "Ore"], ["riepilogo", "Riepilogo"], ["archivio", "Archivio"]] },

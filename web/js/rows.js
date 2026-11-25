@@ -61,6 +61,7 @@ export function consultationRow(c, { onChange = changed } = {}) {
     h("div", { class: "main-col" }, h("div", { class: "t-title" }, c.title || `Consulenza ${c.consultant_name || ""}`),
       h("div", { class: "meta" }, h("span", {}, c.consultant_name || "—"), customerChip(c),
         h("span", { class: "progress-txt" }, `${c.activities_done}/${c.activities_total} attività`),
+        c.next_mode && c.next_mode !== "nessuna" ? h("span", { title: "Consulenza ricorrente" }, `↻ ${label(c.next_mode).toLowerCase()}`) : null,
         c.status === "chiusa" ? badge("chiusa", "ok") : null)),
     h("div", { class: "side-col" }, fmtDate(c.date_start, { weekday: true })));
 }

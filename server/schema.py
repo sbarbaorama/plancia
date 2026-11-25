@@ -23,7 +23,8 @@ ENUM_LABELS = {
     "annullata": "Annullata", "licenza": "Licenza", "contratto": "Contratto", "manutenzione": "Manutenzione",
     "verifica": "Verifica", "attiva": "Attiva", "fatta": "Fatta", "ricevuto": "Ricevuto", "annullato": "Annullato",
     "chiusa": "Chiusa", "giallo": "Giallo", "verde": "Verde", "blu": "Blu", "rosa": "Rosa", "viola": "Viola",
-    "arancio": "Arancio", "task": "Task", "consulenza": "Consulenza", "admin": "Amministratore", "membro": "Membro",
+    "arancio": "Arancio", "settimana": "Ogni 7 giorni", "mese": "Una volta al mese", "data": "In una data precisa",
+    "task": "Task", "consulenza": "Consulenza", "admin": "Amministratore", "membro": "Membro",
 }
 
 
@@ -251,6 +252,9 @@ add(Resource(
         "location": ("text", "Luogo", None),
         "status": ("enum", "Stato", ("pianificata", "in_corso", "chiusa")),
         "closing_note": ("longtext", "Nota di chiusura", None),
+        "next_mode": ("enum", "Prossima consulenza", ("nessuna", "settimana", "mese", "data")),
+        "next_date": ("date", "Data della prossima", None),
+        "carry_open": ("bool", "Porta le attività non chiuse nella prossima consulenza del consulente", None),
     },
     required=("date_start",),
     select=f"""SELECT cn.*, co.name AS consultant_name, co.company AS consultant_company,
@@ -267,6 +271,23 @@ add(Resource(
     order="cn.date_start DESC, cn.id DESC", title="location",
     search=("location", "closing_note"), customer_col="cn.customer_id",
     date_col="cn.date_start", date_end_col="COALESCE(cn.date_end, cn.date_start)", no_create=True,
+))
+
+add(Resource(
+    "procedures", "Procedura", "pr",
+    fields={
+        "title": ("text", "Titolo", None), "category": ("text", "Categoria", None),
+        "tags": ("text", "Etichette (separate da virgola)", None), "body": ("longtext", "Testo", None),
+        "customer_id": ("fk", "Cliente (facoltativo)", "customers"), "pinned": ("bool", "In evidenza", None),
+        "visibility": ("enum", "Visibilità", VIS),
+    },
+    required=("title",),
+    select=f"""SELECT pr.*, cu.name AS customer_name, cu.code AS customer_code, {_att('procedures', 'pr')}
+        FROM procedures pr LEFT JOIN customers cu ON cu.id = pr.customer_id""",
+    order="pr.pinned DESC, casefold(pr.category), casefold(pr.title)",
+    search=("title", "category", "tags", "body"), customer_col="pr.customer_id", visibility="team",
+    form=[["title"], ["category", "tags"], ["body"], ["customer_id", "pinned"], ["visibility"]],
+    defaults={"visibility": "team"},
 ))
 
 add(Resource(
@@ -443,7 +464,7 @@ ATTACHMENT_TYPES = tuple(n for n, r in R.items() if r.attachments)
 TABLE_ORDER = (
     "users", "customers", "companies", "contacts", "projects", "events", "meetings", "tasks", "subtasks", "consultations",
     "changes", "change_freezes", "deadlines", "waiting_items", "inbox_items", "checklist_templates",
-    "checklist_runs", "sticky_notes", "time_entries",
+    "checklist_runs", "sticky_notes", "time_entries", "procedures",
 )
 
 
