@@ -143,6 +143,45 @@ class CrudTest(Base):
         self.assertIsNone(a["closed_at"])
         self.assertEqual(b["status"], "attiva")
 
+    def test_recurring_events(self):
+        from server import ricorrenze
+        ev = crud.create_item(self.conn, "events", {"title": "SAL CVM", "start": "2026-12-01T10:00", "end": "2026-12-01T11:00",
+                                                    "recurrence_unit": "settimane", "recurrence_every": 2, "recurrence_until": "2027-01-31",
+                                                    "series": "SAL CVM"})
+        all_ = crud.list_items(self.conn, "events")
+        self.assertEqual([e["start"] for e in all_], ["2026-12-01T10:00", "2026-12-15T10:00", "2026-12-29T10:00", "2027-01-12T10:00", "2027-01-26T10:00"])
+        self.assertTrue(all(e["end"][11:] == "11:00" and e["series"] == "SAL CVM" for e in all_))
+        self.assertEqual((all_[2]["occurrences"], all_[2]["occurrence_index"]), (5, 3))
+        # verbale sulla terza: resta anche cambiando la regola
+        m = crud.create_item(self.conn, "meetings", {"title": "SAL", "event_id": all_[3]["id"]})
+        # solo questo: titolo diverso solo sulla seconda
+        ricorrenze.update(self.conn, all_[1]["id"], {"title": "SAL spostato"}, "this")
+        self.assertEqual([e["title"] for e in crud.list_items(self.conn, "events")].count("SAL spostato"), 1)
+        # questo e i successivi: nuovo orario e luogo dalla terza in poi
+        ricorrenze.update(self.conn, all_[2]["id"], {"start": "2026-12-29T14:00", "end": "2026-12-29T15:30", "location": "Trento"}, "following")
+        evs = crud.list_items(self.conn, "events")
+        self.assertEqual([e["start"][11:] for e in evs], ["10:00", "10:00", "14:00", "14:00", "14:00"])
+        self.assertEqual([e["location"] for e in evs], ["", "", "Trento", "Trento", "Trento"])
+        self.assertEqual(evs[4]["end"], "2027-01-26T15:30")
+        # nuova regola dalla terza: ogni settimana fino al 12 gennaio; la ripetizione con verbale resta
+        ricorrenze.update(self.conn, evs[2]["id"], {"recurrence_every": 1, "recurrence_until": "2027-01-12"}, "following")
+        evs = crud.list_items(self.conn, "events")
+        self.assertEqual([e["start"][:10] for e in evs], ["2026-12-01", "2026-12-15", "2026-12-29", "2027-01-05", "2027-01-12"])
+        self.assertEqual(crud.get_item(self.conn, "meetings", m["id"])["event_id"], evs[4]["id"])
+        self.assertEqual(evs[0]["recurrence_until"], "2026-12-28")  # il gruppo precedente finisce prima
+        with self.assertRaises(crud.ValidationError):
+            ricorrenze.update(self.conn, evs[3]["id"], {"recurrence_every": 3}, "this")
+        # elimina questo e i successivi
+        r = ricorrenze.delete(self.conn, evs[3]["id"], "following")
+        self.assertEqual(r["deleted"], 2)
+        self.assertEqual(len(crud.list_items(self.conn, "events")), 3)
+        # senza «Fino al»: un anno; un appuntamento singolo che diventa ricorrente
+        one = crud.create_item(self.conn, "events", {"title": "Riunione mensile", "start": "2027-03-10T09:00"})
+        ricorrenze.update(self.conn, one["id"], {"recurrence_unit": "mesi"}, "this")
+        self.assertEqual(len(crud.list_items(self.conn, "events", {"q": "mensile"})), 13)
+        with self.assertRaises(crud.ValidationError):
+            crud.create_item(self.conn, "events", {"title": "X", "start": "2027-03-10", "recurrence_unit": "giorni", "recurrence_until": "2027-03-01"})
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])

@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import attachments, auth, backup, crud, importer, legacy, ops, rubrica
+from . import attachments, auth, backup, crud, importer, legacy, ops, ricorrenze, rubrica
 from .crud import Ctx, Forbidden, NotFound, ValidationError
 from .db import connect, open_db
 from .schema import R, public_schema
@@ -351,6 +351,18 @@ def r_time_csv(h, conn, q, ctx):
     start, end = _date(q, "from", today.replace(day=1)), _date(q, "to", today)
     return TextResponse(ops.time_csv(conn, start, end, ctx, q.get("user", "me")), "text/csv; charset=utf-8",
                         f"ore_{start.isoformat()}_{end.isoformat()}.csv")
+
+
+# appuntamenti ricorrenti
+@route("PUT", r"/api/events/(\d+)/recurring")
+def r_event_recurring_update(h, conn, q, ctx, eid):
+    b = h.body()
+    return ricorrenze.update(conn, eid, b.get("data") or {}, b.get("scope", "this"), ctx)
+
+
+@route("DELETE", r"/api/events/(\d+)/recurring")
+def r_event_recurring_delete(h, conn, q, ctx, eid):
+    return ricorrenze.delete(conn, eid, q.get("scope", "this"), ctx)
 
 
 # rubrica e aziende

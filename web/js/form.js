@@ -178,6 +178,14 @@ export async function openEditor(resource, item, opts = {}) {
     !isNew && opts.deletable !== false ? h("button", {
       class: "btn btn-danger", type: "button",
       onclick: async () => {
+        if (opts.remove) {
+          // eliminazione su misura (es. appuntamenti ricorrenti): restituisce true se ha eliminato
+          try { if (!(await opts.remove(item))) return; } catch (err) { showError(err); return; }
+          invalidateFor(resource);
+          closePanel();
+          opts.onSave?.(null);
+          return;
+        }
         if (!(await confirmDialog(`Eliminare «${item[schema.title] || schema.label}»?`, { confirm: "Elimina", detail: "Si eliminano anche gli allegati." }))) return;
         try {
           await del(`${URL_OF(resource)}/${item.id}`);
@@ -196,8 +204,10 @@ export async function openEditor(resource, item, opts = {}) {
     if (opts.transform) Object.assign(data, opts.transform(data, form));
     if (opts.beforeSave && !(await opts.beforeSave(data, form))) return;
     try {
-      const saved = isNew ? await post(URL_OF(resource), { ...(opts.hiddenValues || {}), ...data })
-        : await put(`${URL_OF(resource)}/${item.id}`, data);
+      const saved = opts.save ? await opts.save(data, isNew)
+        : isNew ? await post(URL_OF(resource), { ...(opts.hiddenValues || {}), ...data })
+          : await put(`${URL_OF(resource)}/${item.id}`, data);
+      if (saved === undefined) return; // salvataggio annullato dall'utente
       if (opts.afterSave) await opts.afterSave(saved, isNew, form);
       if (isNew && pasted && saved?.id) await pasted.flush(saved.id);
       invalidateFor(resource);

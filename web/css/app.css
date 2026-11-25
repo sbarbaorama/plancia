@@ -706,3 +706,4 @@ th.sortable.on .arrow { opacity: 1; }
     --selection: color-mix(in srgb, var(--accent) 75%, #ffffff); --selection-ink: #0b0f14;
   }
 }
+.series-pick { min-height: 32px; align-items: flex-start; } .series-pick input { margin-top: 3px; }

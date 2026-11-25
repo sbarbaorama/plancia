@@ -1,10 +1,10 @@
 // Editor specifici costruiti sopra quello generico, più le azioni comuni (timer, nuovo…).
-import { get, post, put } from "./api.js";
+import { del, get, post, put } from "./api.js";
 import { attachmentsBox } from "./attachments.js";
 import { field, openEditor, readForm } from "./form.js";
 import { imagesOf, pasteImages, richText } from "./paste.js";
 import {
-  addDays, autoGrow, clear, closePanel, confirmDialog, copyText, fmtDate, fmtDateTime, h, icon, isTeam, label,
+  addDays, autoGrow, choiceDialog, clear, closePanel, confirmDialog, copyText, fmtDate, fmtDateTime, h, icon, isTeam, label,
   loadContacts, loadCustomers, loadProjects, nowLocal, onSubmitOnce, openPanel, popMenu, printDoc, resolveCombos, showError, store, toast, todayISO,
 } from "./ui.js";
 
@@ -96,9 +96,60 @@ export async function openTaskEditor(task, { prefill = {}, onSave = changed } = 
 }
 
 // ------------------------------------------------------------------ appuntamenti, modifiche, scadenze, attese…
+const EVERY = { giorni: ["giorno", "giorni"], settimane: ["settimana", "settimane"], mesi: ["mese", "mesi"], anni: ["anno", "anni"] };
+export function recurrenceText(e) {
+  if (!e.recurrence_unit || e.recurrence_unit === "nessuna") return "";
+  const [one, many] = EVERY[e.recurrence_unit];
+  const n = Number(e.recurrence_every) || 1;
+  return `ogni ${n === 1 ? one : `${n} ${many}`}${e.recurrence_until ? ` fino al ${fmtDate(e.recurrence_until, { year: true })}` : ""}`;
+}
+
 export const openEventEditor = (ev, { prefill = {}, onSave = changed } = {}) =>
   openEditor("events", ev, {
     prefill: ev?.id ? prefill : { start: nowLocal().slice(0, 11) + "09:00", ...prefill }, onSave,
+    extra: async (v, form) => {
+      // la ripetizione: «Ogni» e «Fino al» servono solo se si ripete
+      const unit = form.elements.namedItem("recurrence_unit");
+      const sync = () => {
+        const on = unit.value !== "nessuna";
+        for (const n of ["recurrence_every", "recurrence_until"]) form.elements.namedItem(n).closest(".field").style.visibility = on ? "" : "hidden";
+      };
+      unit.addEventListener("change", sync);
+      setTimeout(sync, 0);
+      // la serie di riunioni: suggerisce quelle già usate
+      const series = await get("/api/meetings/series").catch(() => []);
+      form.elements.namedItem("series").setAttribute("list", "event-series-list");
+      const info = ev?.recurrence_group ? h("div", { class: "banner" }, icon("calendario"),
+        `Appuntamento ricorrente (${recurrenceText(ev)}): è il ${ev.occurrence_index}° di ${ev.occurrences}. Salvando o eliminando puoi scegliere se cambiare solo questo o anche i successivi.`) : null;
+      return [h("datalist", { id: "event-series-list" }, series.map((s) => h("option", { value: s }))),
+        h("p", { class: "hint" }, "«Ripeti» crea in calendario tutte le date fino a «Fino al» (senza data: per un anno). «Serie di riunioni» fa nascere il verbale già nella serie, con le azioni aperte delle riunioni precedenti."),
+        info];
+    },
+    save: async (data, isNew) => {
+      if (isNew) return post("/api/events", data);
+      const ruleChanged = ["recurrence_unit", "recurrence_every", "recurrence_until"].some((k) => String(data[k] ?? "") !== String(ev[k] ?? ""));
+      if (!ev.recurrence_group) return put(`/api/events/${ev.id}/recurring`, { scope: "this", data });
+      const scope = ruleChanged ? "following" : await choiceDialog("Appuntamento ricorrente: cosa vuoi modificare?", [
+        ["this", "Solo questo"], ["following", "Questo e i successivi", "btn-primary"]]);
+      if (!scope) return undefined;
+      if (ruleChanged && !(await confirmDialog("Cambiare la ripetizione da questo appuntamento in poi?", { confirm: "Cambia", danger: false,
+        detail: "Le date successive vengono ricreate con la nuova regola; quelle che hanno già un verbale restano." }))) return undefined;
+      return put(`/api/events/${ev.id}/recurring`, { scope, data });
+    },
+    remove: async (item) => {
+      if (!item.recurrence_group) {
+        if (!(await confirmDialog(`Eliminare «${item.title}»?`, { confirm: "Elimina", detail: "Si eliminano anche gli allegati." }))) return false;
+        await del(`/api/events/${item.id}`);
+        toast("Eliminato");
+        return true;
+      }
+      const scope = await choiceDialog(`Eliminare «${item.title}»?`, [["this", "Solo questo", "btn-danger"], ["following", "Questo e i successivi", "btn-danger"]],
+        { detail: "È un appuntamento ricorrente. I verbali collegati restano." });
+      if (!scope) return false;
+      const r = await del(`/api/events/${item.id}/recurring?scope=${scope}`);
+      toast(r.deleted === 1 ? "Eliminato" : `Eliminati ${r.deleted} appuntamenti`);
+      return true;
+    },
     footExtra: (v) => ev?.id ? h("button", { class: "btn", type: "button", onclick: () => {
       closePanel();
       location.hash = ev.meeting_id ? `#/riunioni/${ev.meeting_id}` : `#/riunioni/new?event_id=${ev.id}`;

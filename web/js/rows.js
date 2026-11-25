@@ -49,7 +49,9 @@ export function eventRow(e, { onChange = changed } = {}) {
     h("span", { class: "mono small", style: { width: "48px", color: "var(--muted)" } }, e.all_day ? "giorno" : fmtTime(e.start)),
     h("span", { class: "dot", style: { background: "var(--info)", alignSelf: "stretch", width: "3px", height: "auto", borderRadius: "2px" } }),
     h("div", { class: "main-col" }, h("div", { class: "t-title" }, e.title),
-      h("div", { class: "meta" }, customerChip(e), e.location ? h("span", {}, e.location) : null, e.meeting_id ? badge("verbale", "violet") : null)),
+      h("div", { class: "meta" }, customerChip(e), e.location ? h("span", {}, e.location) : null,
+        e.recurrence_group ? h("span", { title: "Appuntamento ricorrente" }, "↻ ricorrente") : null,
+        e.series ? badge(e.series, "violet") : null, e.meeting_id ? badge("verbale", "violet") : null)),
     h("div", { class: "side-col" }, fmtDue(e.start.slice(0, 10))));
 }
 

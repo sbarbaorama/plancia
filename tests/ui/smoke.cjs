@@ -188,6 +188,47 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     assert((await titles()).length === 0, "la serie non è stata chiusa");
   });
 
+  await check("appuntamento ricorrente: crea, modifica i successivi, elimina", async () => {
+    await go("#/calendario");
+    await page.click(".page-head >> text=Appuntamento"); await page.waitForSelector("#panel.open #f-title");
+    await page.fill("#f-title", "SAL Delta");
+    await page.fill("#f-start", "2027-02-01T10:00"); await page.fill("#f-end", "2027-02-01T11:00");
+    await page.selectOption("#f-recurrence_unit", "settimane");
+    await page.fill("#f-recurrence_every", "1"); await page.fill("#f-recurrence_until", "2027-02-22");
+    await page.fill("#f-series", "SAL Delta");
+    await page.click("#panel button[type=submit]"); await page.waitForTimeout(700);
+    let evs = (await api("GET", "/api/events?q=Delta")).sort((a, b) => a.start.localeCompare(b.start));
+    assert(evs.length === 4 && evs.every((e) => e.series === "SAL Delta"), `ripetizioni: ${evs.length}`);
+    // dalla terza in poi: nuovo luogo
+    await page.evaluate(async (e) => (await import("/js/editors.js")).openEventEditor(e), evs[2]);
+    await page.waitForSelector("#panel.open .banner");
+    await page.fill("#f-location", "Sala A");
+    await page.click("#panel button[type=submit]");
+    await page.click("dialog[open] >> text=Questo e i successivi"); await page.waitForTimeout(600);
+    evs = (await api("GET", "/api/events?q=Delta")).sort((a, b) => a.start.localeCompare(b.start));
+    assert(JSON.stringify(evs.map((e) => e.location)) === JSON.stringify(["", "", "Sala A", "Sala A"]), `luoghi: ${evs.map((e) => e.location)}`);
+    // verbale dall'appuntamento: nasce nella serie
+    await go(`#/riunioni/new?event_id=${evs[0].id}`);
+    assert(await page.inputValue("#f-series") === "SAL Delta", "il verbale non eredita la serie");
+    // elimina questo e i successivi dalla seconda
+    await page.evaluate(async (e) => (await import("/js/editors.js")).openEventEditor(e), evs[1]);
+    await page.waitForSelector("#panel.open .banner");
+    await page.click("#panel .btn-danger");
+    await page.click("dialog[open] >> text=Questo e i successivi"); await page.waitForTimeout(600);
+    assert((await api("GET", "/api/events?q=Delta")).length === 1, "non eliminati i successivi");
+  });
+
+  await check("raggruppa verbali esistenti in una serie", async () => {
+    for (const t of ["Riunione A", "Riunione B", "Riunione C"]) await api("POST", "/api/meetings", { title: t });
+    await go("#/riunioni");
+    await page.click("text=Raggruppa in una serie…"); await page.waitForSelector("#panel.open #group-series");
+    await page.fill("#group-series", "Progetto Gamma");
+    for (const t of ["Riunione A", "Riunione B", "Riunione C"]) await page.check(`.series-pick:has-text("${t}") input`);
+    await click("#panel button[type=submit]");
+    const ms = (await api("GET", "/api/meetings")).filter((m) => m.title.startsWith("Riunione "));
+    assert(ms.length === 3 && ms.every((m) => m.series === "Progetto Gamma"), JSON.stringify(ms.map((m) => m.series)));
+  });
+
   await check("nessun errore JavaScript", async () => { assert(!errors.length, errors.join(" | ")); });
   await browser.close();
   console.log(JSON.stringify(results));

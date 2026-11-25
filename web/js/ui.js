@@ -119,6 +119,21 @@ export function confirmDialog(message, { confirm = "Conferma", danger = true, de
     dlg.showModal();
   });
 }
+/** Finestra con più scelte: choices = [[valore, etichetta, classe del pulsante]]. Restituisce il valore o null. */
+export function choiceDialog(message, choices, { detail = "" } = {}) {
+  return new Promise((resolve) => {
+    let picked = null;
+    const dlg = h("dialog", { "aria-label": message },
+      h("div", { class: "dialog-body" }, h("p", { style: { fontWeight: "600" } }, message), detail ? h("p", { class: "muted small" }, detail) : null),
+      h("div", { class: "dialog-foot" },
+        h("button", { class: "btn", type: "button", onclick: () => dlg.close() }, "Annulla"),
+        choices.map(([v, l, cls]) => h("button", { class: `btn ${cls || ""}`, type: "button", onclick: () => { picked = v; dlg.close(); } }, l))));
+    dlg.addEventListener("close", () => { resolve(picked); dlg.remove(); });
+    document.body.append(dlg);
+    dlg.showModal();
+  });
+}
+
 /** Finestra con testo da copiare (riepiloghi). */
 export function textDialog(title, text, extra = null) {
   const area = h("textarea", { rows: 14, value: text, readonly: true, style: { fontFamily: "var(--mono)", fontSize: "12.5px" } });

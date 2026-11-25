@@ -560,6 +560,9 @@ def create_item(conn, resource, data, ctx=LOCAL, *, internal=False):
         item_id = _insert(conn, resource, record)
         if resource == "contacts":
             _set_sm_customers(conn, item_id, data.get("sm_customer_ids"), record.get("is_service_manager"))
+        if resource == "events" and record.get("recurrence_unit", "nessuna") != "nessuna":
+            from . import ricorrenze  # import locale: ricorrenze usa crud
+            ricorrenze.expand(conn, item_id)
         title = record.get(res.title, "")
         log(conn, ctx, resource, item_id, "creato", title, customer_of(conn, res, item_id))
         item = get_item(conn, resource, item_id)

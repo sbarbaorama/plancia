@@ -197,19 +197,24 @@ add(Resource(
         "all_day": ("bool", "Tutto il giorno", None), "location": ("text", "Luogo", None),
         "customer_id": ("fk", "Cliente", "customers"), "project_id": ("fk", "Progetto", "projects"),
         "notes": ("longtext", "Note", None), "visibility": ("enum", "Visibilità", VIS),
+        "recurrence_unit": ("enum", "Ripeti", RECURRENCE), "recurrence_every": ("int", "Ogni", (1, 1000)),
+        "recurrence_until": ("date", "Fino al", None), "series": ("text", "Serie di riunioni", None),
     },
     required=("title", "start"),
     select=f"""SELECT e.*, p.name AS project_name, p.color AS project_color,
         cu.name AS customer_name, cu.code AS customer_code,
         (SELECT id FROM meetings m WHERE m.event_id = e.id ORDER BY m.id LIMIT 1) AS meeting_id,
+        (SELECT COUNT(*) FROM events e2 WHERE e2.recurrence_group = e.recurrence_group) AS occurrences,
+        (SELECT COUNT(*) FROM events e2 WHERE e2.recurrence_group = e.recurrence_group AND (e2.start < e.start OR (e2.start = e.start AND e2.id <= e.id))) AS occurrence_index,
         {_att('events', 'e')}
         FROM events e LEFT JOIN projects p ON p.id = e.project_id
         LEFT JOIN customers cu ON cu.id = COALESCE(e.customer_id, p.customer_id)""",
     order="e.start, e.id", search=("title", "location", "notes"),
     customer_col="COALESCE(e.customer_id, p.customer_id)", date_col="e.start", date_end_col="COALESCE(NULLIF(e.\"end\", ''), e.start)",
     visibility="team",
-    form=[["title"], ["start", "end"], ["all_day", "location"], ["customer_id", "project_id"], ["visibility"], ["notes"]],
-    defaults={"visibility": "team"},
+    form=[["title"], ["start", "end"], ["all_day", "location"], ["recurrence_unit", "recurrence_every", "recurrence_until"],
+          ["customer_id", "project_id"], ["series", "visibility"], ["notes"]],
+    defaults={"visibility": "team", "recurrence_unit": "nessuna", "recurrence_every": 1},
 ))
 
 add(Resource(
