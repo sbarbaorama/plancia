@@ -568,7 +568,9 @@ table.t input, table.t select { min-height: 32px; padding: 4px 8px; }
 
 /* verbale */
 .doc .form textarea { min-height: 120px; }
-.form-row.doc-meta { grid-template-columns: minmax(0, 2.2fr) repeat(4, minmax(0, 1fr)); }
+/* intestazione del verbale: colonne abbastanza larghe da leggere data e nomi; se non c'è spazio vanno a capo */
+.form-row.doc-meta { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); align-items: end; }
+.form-row.doc-meta > .field:first-child { grid-column: span 2; }
 .doc-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .doc .form .doc-big textarea { min-height: 42vh; }
 .doc-cols { display: grid; grid-template-columns: minmax(0, 1fr) clamp(360px, 30vw, 560px); gap: 20px; align-items: start; }
