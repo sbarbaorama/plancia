@@ -31,7 +31,7 @@ export function codeBlock(code, lang = "") {
 }
 
 /** Testo → nodi. images: allegati immagine dell'elemento (per «[immagine: …]»). */
-export function renderMarkdown(src, images = [], used = new Set()) {
+export function renderMarkdown(src, images = [], used = new Set(), { plainCode = false } = {}) {
   const lines = String(src || "").replace(/\r\n/g, "\n").split("\n");
   const out = [];
   let para = [], list = null;
@@ -44,7 +44,7 @@ export function renderMarkdown(src, images = [], used = new Set()) {
       flushPara(); flushList();
       const buf = [];
       for (i++; i < lines.length && !/^\s*```\s*$/.test(lines[i]); i++) buf.push(lines[i]);
-      out.push(codeBlock(buf.join("\n"), fence[1]));
+      out.push(plainCode ? h("pre", {}, buf.join("\n")) : codeBlock(buf.join("\n"), fence[1]));
       continue;
     }
     const head = line.match(/^(#{1,3})\s+(.*)$/);

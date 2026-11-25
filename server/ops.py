@@ -384,13 +384,19 @@ def _carry_activities(conn, cons, target, ctx):
     return len(new)
 
 
+def _clean_note(note, current):
+    from . import richtext
+    note = str(note or current or "")
+    return richtext.sanitize(note) if richtext.is_rich(note) else note[:50000]
+
+
 def close_consultation(conn, cid, note, ctx=LOCAL):
     """Chiude la giornata. Se c'è una regola, nasce la prossima consulenza; le attività non chiuse
     passano alla prossima consulenza dello stesso consulente (nuova o già pianificata)."""
     with transaction(conn):
         cons = get_item(conn, "consultations", cid)
         conn.execute("UPDATE consultations SET status = 'chiusa', closing_note = ?, closed_at = ?, updated_at = ? WHERE id = ?",
-                     (str(note or cons["closing_note"] or "")[:20000], now_iso(), now_iso(), cons["id"]))
+                     (_clean_note(note, cons["closing_note"]), now_iso(), now_iso(), cons["id"]))
         crud.update_item(conn, "tasks", cons["task_id"], {"status": "chiuso"}, ctx)
         target, created = None, False
         if cons.get("next_id"):

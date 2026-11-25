@@ -3,7 +3,8 @@ import { get, qs } from "../api.js";
 import { attachmentsBox } from "../attachments.js";
 import { openEditor } from "../form.js";
 import { applyFont, fontButton, printFontStyle } from "../fonts.js";
-import { plainText, renderMarkdown } from "../markdown.js";
+import { plainText } from "../markdown.js";
+import { isRich, renderRich, toPlain } from "../richtext.js";
 import { imagesOf } from "../paste.js";
 import {
   badge, clear, copyText, customerChip, customerFilter, fmtDate, h, icon, loadCustomers, pageHead, printDoc, viewMode, viewToggle,
@@ -11,10 +12,11 @@ import {
 
 const state = { q: "", category: "", customer_id: "", view: viewMode("procedure", "schede") };
 const tagsOf = (p) => String(p.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
-const excerpt = (p) => plainText(p.body).split("\n").filter(Boolean).slice(0, 3).join(" · ").slice(0, 220);
+const textOf = (body) => (isRich(body) ? toPlain(body) : plainText(body));
+const excerpt = (p) => textOf(p.body).split("\n").filter(Boolean).slice(0, 3).join(" · ").slice(0, 220);
 
-const HELP = "Formattazione: # Titolo · ## Sottotitolo · - elenco · 1. elenco numerato · **grassetto** · `comando` · "
-  + "blocco di codice tra due righe ``` (con pulsante Copia). Le immagini si incollano con Ctrl+V.";
+const HELP = "Usa la barra sopra il testo: T titolo, t sottotitolo, { } blocco di codice (nella procedura avrà il pulsante Copia), `c` codice nel testo. "
+  + "Le immagini si incollano con Ctrl+V.";
 
 export function openProcedureEditor(p, { onSave, prefill = {} } = {}) {
   return openEditor("procedures", p, {
@@ -24,9 +26,6 @@ export function openProcedureEditor(p, { onSave, prefill = {} } = {}) {
       applyFont(form, "procedure");
       const cats = await get("/api/procedures").then((all) => [...new Set(all.map((x) => x.category).filter(Boolean))]).catch(() => []);
       form.elements.namedItem("category").setAttribute("list", "proc-cats");
-      const body = form.elements.namedItem("body");
-      body.rows = 16;
-      body.style.fontFamily = "";
       return [h("datalist", { id: "proc-cats" }, cats.map((c) => h("option", { value: c }))),
         h("div", { class: "row", style: { justifyContent: "space-between" } }, h("p", { class: "hint", style: { flex: 1 } }, HELP), fontButton("procedure"))];
     },
@@ -43,7 +42,7 @@ export async function render(root, ctx) {
   const items = state.category ? all.filter((p) => (p.category || "Senza categoria") === state.category) : all;
   const open = (p) => { location.hash = `#/procedure/${p.id}`; };
   const copyBtn = (p) => h("button", { class: "btn btn-sm", type: "button", title: "Copia il testo della procedura",
-    onclick: (e) => { e.stopPropagation(); copyText(plainText(p.body), e.currentTarget); } }, icon("copy"), "Copia");
+    onclick: (e) => { e.stopPropagation(); copyText(textOf(p.body), e.currentTarget); } }, icon("copy"), "Copia");
   const meta = (p) => [p.pinned ? badge("in evidenza", "accent") : null, p.category ? badge(p.category, "violet") : null, customerChip(p),
     tagsOf(p).map((t) => h("span", { class: "tag" }, `#${t}`))];
   const card = (p) => h("article", { class: "card card-pad proc-card", onclick: () => open(p) },
@@ -74,11 +73,11 @@ async function renderOne(root, ctx) {
   const images = p.attachments_count ? await imagesOf("procedures", p.id) : [];
   if (!ctx.isCurrent()) return;
   const reload = () => render(root, ctx);
-  const body = applyFont(h("article", { class: "card card-pad doc-body proc-body" }, p.body ? renderMarkdown(p.body, images) : h("p", { class: "muted" }, "Nessun testo.")), "procedure");
+  const body = applyFont(h("article", { class: "card card-pad doc-body proc-body" }, p.body ? renderRich(p.body, { images, markdown: true }) : h("p", { class: "muted" }, "Nessun testo.")), "procedure");
   clear(root,
     pageHead(p.title, { eyebrow: h("a", { href: "#/procedure" }, "← Procedure") },
-      h("button", { class: "btn", type: "button", onclick: (e) => copyText(plainText(p.body), e.currentTarget) }, icon("copy"), "Copia tutto"),
-      h("button", { class: "btn", type: "button", onclick: () => printDoc(h("div", { style: printFontStyle("procedure") }, h("h1", {}, p.title), h("div", { class: "doc-body" }, renderMarkdown(p.body, images)))) }, icon("print"), "Stampa / PDF"),
+      h("button", { class: "btn", type: "button", onclick: (e) => copyText(textOf(p.body), e.currentTarget) }, icon("copy"), "Copia tutto"),
+      h("button", { class: "btn", type: "button", onclick: () => printDoc(h("div", { style: printFontStyle("procedure") }, h("h1", {}, p.title), h("div", { class: "doc-body" }, renderRich(p.body, { images, markdown: true })))) }, icon("print"), "Stampa / PDF"),
       fontButton("procedure"),
       h("button", { class: "btn btn-primary", type: "button", onclick: () => openProcedureEditor(p, { onSave: (x) => x ? reload() : (location.hash = "#/procedure") }) }, icon("edit"), "Modifica")),
     h("div", { class: "row small", style: { flexWrap: "wrap", gap: "6px 10px", marginBottom: "14px" } },

@@ -4,7 +4,8 @@ import { setLeaveGuard } from "../app.js";
 import { attachmentsBox } from "../attachments.js";
 import { field, readForm } from "../form.js";
 import { applyFont, fontButton, printFontStyle } from "../fonts.js";
-import { imagesOf, pasteImages, richText } from "../paste.js";
+import { imagesOf, pasteImages } from "../paste.js";
+import { renderRich } from "../richtext.js";
 import { meetingRow, setMeetingStatus, taskRow } from "../rows.js";
 import {
   badge, clear, confirmDialog, customerFilter, fmtDate, fmtDateTime, h, icon, isTeam, label, loadCustomers, loadProjects, loadUsers,
@@ -164,7 +165,7 @@ async function renderDoc(root, ctx) {
     const att = form.elements.namedItem("attendees");
     const missing = (c.service_managers || []).filter((s) => !att.value.includes(s.name));
     if (missing.length && await confirmDialog(`Aggiungere ai partecipanti il service manager (${missing.map((s) => s.name).join(", ")})?`, { confirm: "Aggiungi", danger: false })) {
-      att.value = [att.value.trim(), ...missing.map((s) => s.name)].filter(Boolean).join("\n");
+      form.querySelector('[data-rich="attendees"]').appendLines(missing.map((s) => s.name));
       att.dispatchEvent(new Event("input"));
     }
   };
@@ -233,7 +234,7 @@ document.addEventListener("fullscreenchange", () => {
 async function print(m, actions) {
   const images = m.id ? await imagesOf("meetings", m.id) : [];
   const used = new Set();
-  const rt = (t) => h("pre", {}, richText(t, images, used));
+  const rt = (t) => h("div", { class: "rich-print" }, renderRich(t, { images, used }));
   printDoc(h("div", { style: printFontStyle("verbali") },
     h("h1", {}, m.title),
     h("div", { class: "meta" }, [m.date ? fmtDateTime(m.date) : "", m.customer_name, m.project_name, m.series ? `Serie: ${m.series}` : ""].filter(Boolean).join(" · ")),

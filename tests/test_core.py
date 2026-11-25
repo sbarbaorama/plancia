@@ -218,6 +218,28 @@ class CrudTest(Base):
         ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-06-08"})
         self.assertEqual(ops.close_consultation(self.conn, x["id"], "")["carried"], 0)
 
+    def test_rich_text_sanitize(self):
+        from server import richtext
+        dirty = ('<p>Ciao <strong>mondo</strong> <span style="color:red" class="fs-l x">grande</span>'
+                 '<script>alert(1)</script><img src=x onerror=alert(1)><a href="javascript:alert(1)">no</a>'
+                 '<a href="https://example.com" onclick="x()">sì</a></p><div>riga<br>due</div>'
+                 '<pre>ls -la<br>cd /tmp</pre><style>p{}</style><ol start="3"><li>tre</li></ol><font size="7">x</font>')
+        clean = richtext.sanitize(dirty)
+        self.assertEqual(clean, '<p>Ciao <b>mondo</b> <span class="fs-l">grande</span>no'
+                                '<a href="https://example.com" target="_blank" rel="noopener noreferrer">sì</a></p>'
+                                '<p>riga<br>due</p><pre>ls -la\ncd /tmp</pre><ol start="3"><li>tre</li></ol>x')
+        self.assertFalse(richtext.is_rich("Testo semplice <b>non</b> formattato"))
+        self.assertEqual(richtext.to_text("<p>Uno <b>due</b></p><ul><li>a</li><li>b</li></ul>"), "Uno due\n\n- a\n- b")
+        # salvataggio: il verbale tiene solo la formattazione ammessa; il testo semplice resta com'è
+        m = crud.create_item(self.conn, "meetings", {"title": "SAL", "discussion": '<p onclick="x">Ok <u>sì</u><script>x</script></p>',
+                                                     "decisions": "Testo <semplice>"})
+        self.assertEqual(m["discussion"], "<p>Ok <u>sì</u></p>")
+        self.assertEqual(m["decisions"], "Testo <semplice>")
+        co = self.mk("contacts", name="Ugo", is_consultant=True)
+        c = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-01-10", "notes": "<p>N <b>b</b><iframe></iframe></p>"})
+        self.assertEqual(c["notes"], "<p>N <b>b</b></p>")
+        self.assertEqual(ops.close_consultation(self.conn, c["id"], "<p>fine<script>x</script></p>")["closing_note"], "<p>fine</p>")
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])

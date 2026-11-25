@@ -19,3 +19,9 @@ body.printing .print-doc { display: block !important; }
 .print-doc .code-head button { display: none; }
 .print-doc .code-block pre, .print-doc pre code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 9pt; white-space: pre-wrap; border: 1px solid #999; padding: 4pt 6pt; display: block; }
 .print-doc code { font-family: "IBM Plex Mono", Consolas, monospace; }
+
+.print-doc .rich-print p { margin: 0 0 4pt; }
+.print-doc .rich-print ul, .print-doc .rich-print ol { margin: 0 0 4pt; padding-left: 16pt; }
+.print-doc .rich-print mark { background: #fde68a; }
+.print-doc .fs-s { font-size: .82em; } .print-doc .fs-l { font-size: 1.3em; } .print-doc .fs-xl { font-size: 1.65em; }
+.print-doc .plain-text { white-space: pre-wrap; }

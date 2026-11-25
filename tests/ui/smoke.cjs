@@ -85,7 +85,7 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
       const c = document.createElement("canvas"); c.width = 40; c.height = 30; c.getContext("2d").fillRect(0, 0, 40, 30);
       const blob = await new Promise((r) => c.toBlob(r, "image/png"));
       const dt = new DataTransfer(); dt.items.add(new File([blob], "image.png", { type: "image/png" }));
-      const ta = document.getElementById("f-notes"); ta.focus(); ta.selectionStart = ta.value.length;
+      const ta = document.getElementById("f-notes"); ta.focus();
       ta.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
     });
     await page.waitForSelector(".paste-strip:not([hidden]) img");
@@ -229,13 +229,11 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     assert(ms.length === 3 && ms.every((m) => m.series === "Progetto Gamma"), JSON.stringify(ms.map((m) => m.series)));
   });
 
-  await check("procedure: scrivi, cerca, copia il codice", async () => {
-    await go("#/procedure");
-    await page.click(".page-head >> text=Nuova procedura"); await page.waitForSelector("#panel.open #f-title");
-    await page.fill("#f-title", "Riavvio servizio NetEye");
-    await page.fill("#f-category", "NetEye"); await page.fill("#f-tags", "linux, servizi");
-    await page.fill("#f-body", "# Passi\n1. Collegati al server\n2. Riavvia:\n```bash\nsystemctl restart neteye\n```\nControlla **sempre** i log con `journalctl -u neteye`.");
-    await click("#panel button[type=submit]");
+  await check("procedure: testo con i simboli, cerca, codice copiabile, editor formattato", async () => {
+    // una procedura scritta con i simboli (come prima): si legge formattata
+    const p = await api("POST", "/api/procedures", { title: "Riavvio servizio NetEye", category: "NetEye", tags: "linux, servizi",
+      body: "# Passi\n1. Collegati al server\n2. Riavvia:\n```bash\nsystemctl restart neteye\n```\nControlla **sempre** i log con `journalctl -u neteye`." });
+    await go(`#/procedure/${p.id}`);
     await page.waitForSelector(".proc-body .code-block");
     assert((await page.textContent(".proc-body ol")).includes("Collegati al server"), "elenco non mostrato");
     assert((await page.textContent(".proc-body strong")) === "sempre", "grassetto");
@@ -244,6 +242,39 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     assert((await page.$$(".proc-card")).length === 1, "la ricerca nel testo non trova la procedura");
     const res = await api("GET", "/api/search?q=systemctl");
     assert(res.procedures && res.procedures.length === 1, "non compare nella ricerca generale");
+    // nell'editor il testo con i simboli diventa formattato; si aggiunge un blocco di codice dalla barra
+    await go(`#/procedure/${p.id}`);
+    await click(".page-head >> text=Modifica"); await page.waitForSelector("#panel.open #f-body");
+    assert(await page.$("#f-body h2") && await page.$("#f-body pre"), "il testo vecchio non è stato convertito");
+    await page.click("#f-body p:last-child"); await page.keyboard.press("End"); await page.keyboard.press("Enter");
+    await page.keyboard.type("tail -f /var/log/neteye.log");
+    await page.click('#panel .rt-btn[title^="Blocco di codice"]');
+    await click("#panel button[type=submit]");
+    const saved = await api("GET", `/api/procedures/${p.id}`);
+    assert(saved.body.startsWith("<h2>Passi</h2>") && saved.body.includes("<pre>tail -f /var/log/neteye.log</pre>"), saved.body);
+    assert((await page.$$(".proc-body .code-block")).length === 2, "il nuovo blocco non ha il pulsante Copia");
+  });
+
+  await check("verbale: grassetto, sottolineato e dimensione su singole parole", async () => {
+    const m = await api("POST", "/api/meetings", { title: "SAL formattato", discussion: "Testo scritto prima\nseconda riga" });
+    await go(`#/riunioni/${m.id}`);
+    await page.waitForSelector("#f-discussion");
+    assert((await page.innerHTML("#f-discussion")) === "<p>Testo scritto prima<br>seconda riga</p>", "testo vecchio non convertito");
+    await page.click("#f-discussion"); await page.keyboard.press("Control+End"); await page.keyboard.press("Enter");
+    await page.keyboard.type("Decisione importante ");
+    await page.keyboard.press("Control+b"); await page.keyboard.type("urgente"); await page.keyboard.press("Control+b");
+    await page.keyboard.type(" e ");
+    await page.keyboard.press("Control+u"); await page.keyboard.type("sottolineata"); await page.keyboard.press("Control+u");
+    // la parola «importante» più grande
+    await page.evaluate(() => {
+      const t = [...document.querySelectorAll("#f-discussion p")].pop().firstChild;
+      const r = document.createRange(); r.setStart(t, 10); r.setEnd(t, 20);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await page.selectOption(".rich[data-rich=discussion] .rt-size", "4");
+    await page.keyboard.press("Control+s"); await page.waitForTimeout(700);
+    const d = (await api("GET", `/api/meetings/${m.id}`)).discussion;
+    assert(d.includes("<b>urgente</b>") && d.includes("<u>sottolineata</u>") && d.includes('<span class="fs-l">importante</span>'), d);
   });
 
   await check("carattere dei documenti dal pulsante Aa", async () => {

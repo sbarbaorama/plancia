@@ -744,3 +744,28 @@ th.sortable.on .arrow { opacity: 1; }
 .code-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
 .code-block pre { margin: 0; padding: 12px 14px; overflow-x: auto; background: var(--surface-3); }
 .code-block pre code { background: none; padding: 0; white-space: pre; }
+
+/* ------------------------------------------------------------------ testo formattato */
+.rich { display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--surface); min-width: 0; }
+.rich:focus-within { outline: 2px solid color-mix(in srgb, var(--info) 55%, transparent); border-color: var(--info); }
+.rt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px; border-bottom: 1px solid var(--line); background: var(--surface-2); border-radius: var(--r-sm) var(--r-sm) 0 0; }
+.rt-btn { min-width: 30px; height: 28px; padding: 0 7px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 600 13px var(--font); cursor: pointer; }
+.rt-btn:hover { background: var(--surface-3); }
+.rt-btn.rt-h { font-weight: 800; }
+.rt-btn.rt-code { font-family: var(--mono); font-size: 12px; }
+.rt-mark { background: #fde68a; color: #1d2329; border-radius: 3px; padding: 0 2px; }
+.rt-size { width: auto; min-height: 28px; height: 28px; padding: 0 6px; font-size: 12.5px; border-color: var(--line); background: var(--surface); }
+.rt-sep { width: 1px; height: 18px; background: var(--line-strong); margin: 0 4px; }
+.rich-area { min-height: 90px; padding: 8px 10px; outline: none; color: var(--ink); line-height: 1.5; overflow-wrap: anywhere; font-weight: 400; font-size: 14px; }
+.rich-area.empty::before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
+.doc-font .rich-area { font-family: var(--doc-font); font-size: var(--doc-size); }
+.rich-area p, .doc-body p, .rich-print p { margin: 0 0 6px; }
+.rich-area ul, .rich-area ol, .doc-body ul, .doc-body ol { margin: 0 0 6px; padding-left: 22px; }
+.rich-area h2 { font-size: 1.3em; margin: 10px 0 6px; } .rich-area h3 { font-size: 1.12em; margin: 8px 0 4px; }
+.rich-area pre { font-family: var(--mono); font-size: .9em; background: var(--surface-3); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; margin: 0 0 6px; }
+.rich-area code, .rich-print code { font-family: var(--mono); background: var(--surface-3); border-radius: 4px; padding: 1px 4px; font-size: .9em; }
+.rich-area mark, .doc-body mark, .rich-print mark { background: #fde68a; color: #1d2329; border-radius: 2px; padding: 0 1px; }
+.fs-s { font-size: .82em; } .fs-l { font-size: 1.3em; } .fs-xl { font-size: 1.65em; line-height: 1.25; }
+.plain-text { white-space: pre-wrap; }
+.doc .form .rich-area { min-height: 120px; }
+.doc .form .doc-big .rich-area { min-height: 42vh; }

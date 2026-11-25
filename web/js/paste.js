@@ -28,6 +28,8 @@ export function clipboardImages(e) {
 }
 
 function insertAtCursor(el, text) {
+  const editable = el?.closest?.("[contenteditable=true]");
+  if (editable) { editable.focus(); document.execCommand("insertText", false, ` ${text} `); return; }
   if (!el || !("selectionStart" in el) || el.type !== "textarea") return;
   const s = el.selectionStart, end = el.selectionEnd;
   const before = el.value.slice(0, s), after = el.value.slice(end);
@@ -61,7 +63,7 @@ export function pasteImages(form, entityType, entityId) {
     const files = clipboardImages(e);
     if (!files.length) return;
     const hasText = e.clipboardData.types.includes("text/plain") && e.clipboardData.getData("text/plain").trim();
-    const inText = e.target.matches?.("input, textarea");
+    const inText = e.target.matches?.("input, textarea") || !!e.target.closest?.("[contenteditable=true]");
     if (hasText && inText) return; // da Word/Excel arriva anche il testo: incolla il testo
     e.preventDefault();
     for (const f of files) {

@@ -3,7 +3,8 @@ import { del, get, post, put } from "./api.js";
 import { attachmentsBox } from "./attachments.js";
 import { field, openEditor, readForm } from "./form.js";
 import { applyFont, fontButton, printFontStyle } from "./fonts.js";
-import { imagesOf, pasteImages, richText } from "./paste.js";
+import { imagesOf, pasteImages } from "./paste.js";
+import { renderRich, toPlain } from "./richtext.js";
 import {
   addDays, autoGrow, choiceDialog, clear, closePanel, confirmDialog, copyText, fmtDate, fmtDateTime, h, icon, isTeam, label,
   loadContacts, loadCustomers, loadProjects, nowLocal, onSubmitOnce, openPanel, popMenu, printDoc, resolveCombos, showError, store, toast, todayISO,
@@ -322,7 +323,7 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
   const fields = store.schema.resources.consultations.fields;
   const extraFields = {
     title: { type: "text", label: "Titolo" }, project_id: { type: "fk", label: "Progetto", options: "projects" },
-    notes: { type: "longtext", label: "Note" },
+    notes: { type: "longtext", label: "Note", options: "rich" },
   };
   const acts = subtasksEditor(full?.activities || [], { placeholder: "Attività della giornata…" });
   const form = h("form", { class: "form" },
@@ -400,14 +401,14 @@ export function consultationText(c) {
   return [`Consulenza ${fmtDate(c.date_start, { year: true })}${c.date_end && c.date_end !== c.date_start ? ` – ${fmtDate(c.date_end, { year: true })}` : ""}`,
     `Consulente: ${c.consultant_name || ""}${c.consultant_company ? ` (${c.consultant_company})` : ""}`,
     c.customer_name ? `Cliente: ${c.customer_name}` : "", c.location ? `Luogo: ${c.location}` : "", "", "Attività:", acts || "—",
-    c.closing_note ? `\nNote di chiusura:\n${c.closing_note}` : ""].filter((x) => x !== "").join("\n");
+    c.closing_note ? `\nNote di chiusura:\n${toPlain(c.closing_note)}` : ""].filter((x) => x !== "").join("\n");
 }
 
 export async function printConsultation(c) {
   const images = await imagesOf("consultations", c.id);
   const used = new Set();
-  const notes = c.notes ? richText(c.notes, images, used) : null;
-  const closing = c.closing_note ? richText(c.closing_note, images, used) : null;
+  const notes = c.notes ? renderRich(c.notes, { images, used }) : null;
+  const closing = c.closing_note ? renderRich(c.closing_note, { images, used }) : null;
   const rest = images.filter((a) => !used.has(a.name));
   printDoc(h("div", { style: printFontStyle("consulenze") },
     h("h1", {}, "Rapportino di consulenza"),
@@ -417,8 +418,8 @@ export async function printConsultation(c) {
     h("h2", {}, "Attività"),
     h("table", {}, h("tr", {}, h("th", {}, "Attività"), h("th", {}, "Fatto"), h("th", {}, "Esito")),
       (c.activities || []).map((a) => h("tr", {}, h("td", {}, a.title), h("td", {}, a.done ? "Sì" : "No"), h("td", {}, a.outcome || "")))),
-    notes ? [h("h2", {}, "Note"), h("pre", {}, notes)] : null,
-    closing ? [h("h2", {}, "Note di chiusura"), h("pre", {}, closing)] : null,
+    notes ? [h("h2", {}, "Note"), h("div", { class: "rich-print" }, notes)] : null,
+    closing ? [h("h2", {}, "Note di chiusura"), h("div", { class: "rich-print" }, closing)] : null,
     rest.length ? [h("h2", {}, "Immagini"), h("div", { class: "print-images" }, rest.map((a) => h("figure", {}, h("img", { src: `/api/attachments/${a.id}/file`, alt: a.name }), h("figcaption", {}, a.name))))] : null,
     h("div", { class: "sign" }, h("div", {}, "Firma del consulente"), h("div", {}, "Firma per il cliente"))));
 }

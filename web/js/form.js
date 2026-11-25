@@ -2,6 +2,7 @@
 import { del, post, put } from "./api.js";
 import { attachmentsBox } from "./attachments.js";
 import { pasteImages } from "./paste.js";
+import { isRich, richEditor } from "./richtext.js";
 import {
   autoGrow, closePanel, combo, confirmDialog, h, isTeam, label, loadCompanies, loadContacts, loadCustomers, loadProjects, loadUsers, onSubmitOnce,
   openPanel, resolveCombos, showError, store, toast, invalidate,
@@ -97,6 +98,11 @@ export function widget(name, spec, value, fk = {}) {
   switch (spec.type) {
     case "company": return companyCombo(name, value, fk.companies);
     case "longtext":
+      // verbali, consulenze e procedure: testo formattato (anche il testo già formattato di altri campi, es. le note del task di una consulenza)
+      if (spec.options === "rich" || isRich(value)) {
+        const doc = name === "body"; // il testo delle procedure: titoli, codice e link; prima si scriveva con i simboli
+        return richEditor({ name, id: `f-${name}`, value: value ?? "", mode: doc ? "doc" : "base", legacy: doc ? "markdown" : "plain" });
+      }
       return autoGrow(h("textarea", { ...common, rows: name === "command" ? 3 : 4, value: value ?? "", class: name === "command" ? "mono" : "" }));
     case "enum":
       return h("select", common, spec.options.map((o) => h("option", { value: o, selected: o === value }, label(o))));
@@ -121,6 +127,7 @@ export function field(name, spec, value, fk) {
   const w = widget(name, spec, value, fk);
   if (spec.type === "bool") return h("label", { class: "check" }, w, spec.label);
   if (w.classList.contains("combo")) return h("div", { class: "field" }, h("label", { for: `f-${name}` }, spec.label), w);
+  if (w.classList.contains("rich")) return h("div", { class: "field" }, h("label", { for: `f-${name}`, onclick: () => w.focusArea() }, spec.label), w);
   return h("label", { class: "field", for: w.id }, spec.label, w);
 }
 
