@@ -221,7 +221,7 @@ add(Resource(
 add(Resource(
     "meetings", "Verbale", "m",
     fields={
-        "title": ("text", "Titolo", None), "series": ("text", "Serie (riunioni ricorrenti)", None),
+        "title": ("text", "Titolo", None), "series": ("text", "Serie", None),
         "date": ("datetime", "Data", None),
         "customer_id": ("fk", "Cliente", "customers"), "project_id": ("fk", "Progetto", "projects"),
         "event_id": ("fk", "Appuntamento", "events"),

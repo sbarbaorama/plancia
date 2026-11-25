@@ -102,6 +102,8 @@ async function renderDoc(root, ctx) {
   const form = h("form", { class: "form" });
   const seriesInput = field("series", F.series, m.series, fk);
   seriesInput.querySelector("input").setAttribute("list", "series-list");
+  seriesInput.querySelector("input").setAttribute("placeholder", "es. SAL CVM");
+  seriesInput.title = "Serie di riunioni ricorrenti: i verbali con la stessa serie mostrano le azioni ancora aperte dei precedenti";
   form.append(
     h("div", { class: "form-row doc-meta" }, field("title", F.title, m.title, fk), field("date", F.date, m.date, fk),
       seriesInput, field("customer_id", F.customer_id, m.customer_id, fk), field("project_id", F.project_id, m.project_id, fk)),
