@@ -51,6 +51,8 @@
   --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   --pad: 16px;
   --row: 44px;
+  --selection: color-mix(in srgb, var(--accent) 28%, #ffffff);
+  --selection-ink: var(--ink);
   color-scheme: light;
 }
 :root[data-density="compatta"] { --pad: 12px; --row: 36px; }
@@ -188,7 +190,8 @@ p { margin: 0 0 8px; }
 .hidden, [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 :focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
-::selection { background: var(--accent-soft); }
+/* selezione del testo: tinta dell'accento, abbastanza forte da vedersi anche nei temi scuri */
+::selection { background: var(--selection); color: var(--selection-ink); }
 
 /* ------------------------------------------------------------------ cornice */
 .app { display: flex; min-height: 100vh; }
@@ -695,3 +698,11 @@ th.sortable.on .arrow { opacity: 1; }
 .theme-sw { width: 34px; height: 22px; border-radius: 6px; flex: none; border: 1px solid rgba(0, 0, 0, .15);
   background: linear-gradient(90deg, var(--c) 0 30%, var(--a) 30% 70%, var(--b) 70% 100%); }
 .item.closed .t-title { color: var(--muted); }
+
+/* selezione nei temi scuri (scuro, smeraldo e versioni scure dei tenui) */
+:root[data-theme="dark"], :root[data-theme="smeraldo"] { --selection: color-mix(in srgb, var(--accent) 75%, #ffffff); --selection-ink: #0b0f14; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]), :root[data-theme="salvia"], :root[data-theme="lavanda"], :root[data-theme="sabbia"] {
+    --selection: color-mix(in srgb, var(--accent) 75%, #ffffff); --selection-ink: #0b0f14;
+  }
+}

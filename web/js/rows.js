@@ -115,15 +115,15 @@ export async function setMeetingStatus(m, status, onChange = changed) {
 }
 
 export function meetingRow(m, opts) {
-  const onChange = typeof opts === "object" && opts ? opts.onChange : null;
+  const onChange = (typeof opts === "object" && opts?.onChange) || changed;
   const closed = m.status === "chiusa";
   return h("li", { class: `item${closed ? " closed" : ""}`, onclick: () => { location.hash = `#/riunioni/${m.id}`; } },
     h("div", { class: "main-col" }, h("div", { class: "t-title" }, m.title),
       h("div", { class: "meta" }, closed ? badge("chiusa") : null, m.series ? badge(m.series, "violet") : null, customerChip(m), m.project_name ? h("span", {}, m.project_name) : null,
         m.actions_total ? h("span", { class: m.actions_open ? "soon" : "" }, `${m.actions_open} azioni aperte su ${m.actions_total}`) : null)),
     h("div", { class: "side-col" }, m.date ? fmtDateTime(m.date) : ""),
-    onChange ? h("button", { class: "btn btn-sm btn-ghost", type: "button", title: closed ? "Riporta il verbale tra quelli attivi" : "Chiudi il verbale: non compare più tra gli attivi",
-      onclick: (e) => { e.stopPropagation(); setMeetingStatus(m, closed ? "attiva" : "chiusa", onChange); } }, closed ? "Riapri" : "Chiudi") : null);
+    h("button", { class: "btn btn-sm", type: "button", title: closed ? "Riporta il verbale tra quelli attivi" : "Chiudi il verbale: non compare più tra le riunioni attive",
+      onclick: (e) => { e.stopPropagation(); setMeetingStatus(m, closed ? "attiva" : "chiusa", onChange); } }, icon("archivio"), closed ? "Riapri" : "Chiudi"));
 }
 
 export const list = (items, row, emptyText, opts) => items.length
