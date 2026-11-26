@@ -328,6 +328,22 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     assert(moved.linked_consultation_id !== c.id && moved.linked_consultation_date === "2027-09-14", JSON.stringify(moved.linked_consultation_date));
   });
 
+  await check("Oggi: meteo e notizie dagli interessi", async () => {
+    await go("#/impostazioni");
+    await page.fill('input[aria-label="Città del meteo"]', "Trento"); await page.keyboard.press("Enter");
+    await click('.card:has-text("Meteo e notizie") .item:has-text("Trento")');
+    await page.fill('input[aria-label="Nuovo interesse"]', "cybersecurity"); await page.keyboard.press("Enter"); await page.waitForTimeout(400);
+    const st = await api("GET", "/api/settings");
+    assert(st.weather_place && st.weather_place.name === "Trento" && st.news_topics.includes("cybersecurity"), JSON.stringify([st.weather_place, st.news_topics]));
+    await go("#/oggi");
+    await page.waitForSelector(".w-temp");
+    assert((await page.textContent(".w-temp")) === "6°", "temperatura");
+    assert((await page.textContent(".weather")).includes("pioggia 70%"), "previsione di oggi");
+    await page.waitForSelector(".news-link");
+    const a = await page.$eval(".news-link", (el) => [el.getAttribute("href"), el.target, el.rel, el.textContent]);
+    assert(a[0].startsWith("https://news.google.com/") && a[1] === "_blank" && a[2].includes("noopener") && a[3].includes("vulnerabilità"), JSON.stringify(a));
+  });
+
   await check("nessun errore JavaScript", async () => { assert(!errors.length, errors.join(" | ")); });
   await browser.close();
   console.log(JSON.stringify(results));

@@ -1,6 +1,7 @@
 // Impostazioni: aspetto, giornata, notifiche, backup, dati, import da Activity Desk, team.
 import { del, get, post, put } from "../api.js";
 import { BASE_THEMES, THEMES, applyTheme, previewTheme } from "../app.js";
+import { extrasSettings } from "../esterni.js";
 import { FONT_AREAS, fontControls } from "../fonts.js";
 import { openEditor } from "../form.js";
 import {
@@ -125,7 +126,7 @@ export async function render(root, ctx) {
           h("p", { class: "hint" }, "Tipo e dimensione del testo nei campi e nella stampa. La scelta vale su questo PC; si cambia anche dal pulsante «Aa» dentro verbali, consulenze e procedure."),
           FONT_AREAS.map(([k, l]) => h("div", { class: "stack", style: { gap: "4px" } }, h("b", { class: "small" }, l), fontControls(k))))),
         card("Giornata", dayForm), notif, await companiesCard(reload), admin ? card("Backup", backupForm) : null),
-      h("div", { class: "col-side" }, team, admin ? data : null, admin ? legacy : null,
+      h("div", { class: "col-side" }, admin ? extrasSettings(s, reload) : null, team, admin ? data : null, admin ? legacy : null,
         card("Scorciatoie", h("div", { class: "card-body small stack", style: { gap: "6px" } },
           h("div", {}, h("kbd", {}, "Ctrl K"), " palette: cerca, vai a, crea («task @SIGLA titolo ven»)"),
           h("div", {}, h("kbd", {}, "N"), " nuovo task"), h("div", {}, h("kbd", {}, "/"), " cerca"),
