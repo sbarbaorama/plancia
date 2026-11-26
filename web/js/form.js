@@ -1,5 +1,5 @@
 // Moduli generici: costruiti dalla descrizione delle risorse che manda il server (/api/schema).
-import { del, post, put } from "./api.js";
+import { del, get, post, put } from "./api.js";
 import { attachmentsBox } from "./attachments.js";
 import { pasteImages } from "./paste.js";
 import { isRich, richEditor } from "./richtext.js";
@@ -8,9 +8,15 @@ import {
   openPanel, resolveCombos, showError, store, toast, invalidate,
 } from "./ui.js";
 
-const FK_LOADERS = { customers: loadCustomers, projects: loadProjects, users: loadUsers, contacts: loadContacts, companies: loadCompanies };
+const FK_LOADERS = { customers: loadCustomers, projects: loadProjects, users: loadUsers, contacts: loadContacts, companies: loadCompanies,
+  consultations: () => get("/api/consultations") };
 const TEAM_ONLY = new Set(["visibility", "assignee_id"]);
 const URL_OF = (res) => `/api/${res}`;
+
+const consultationDate = (iso) => {
+  const d = new Date(`${iso}T12:00`);
+  return d.toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
+};
 
 function fkOptions(target, items, value, field) {
   let list = items || [];
@@ -18,9 +24,12 @@ function fkOptions(target, items, value, field) {
   if (target === "projects") list = list.filter((p) => p.status !== "chiuso" || String(p.id) === String(value));
   if (target === "users") list = list.filter((u) => u.active || String(u.id) === String(value));
   if (target === "contacts" && field === "consultant_id") list = list.filter((c) => c.is_consultant || String(c.id) === String(value));
+  if (target === "consultations") list = list.filter((c) => c.status !== "chiusa" || String(c.id) === String(value)).sort((a, b) => a.date_start.localeCompare(b.date_start));
   const text = (x) => target === "customers" ? (x.code ? `${x.code} · ${x.name}` : x.name)
     : target === "projects" ? (x.customer_code ? `${x.name} (${x.customer_code})` : x.name)
-      : target === "contacts" ? (x.company ? `${x.name} — ${x.company}` : x.name) : (x.name || x.title);
+      : target === "contacts" ? (x.company ? `${x.name} — ${x.company}` : x.name)
+        : target === "consultations" ? [consultationDate(x.date_start), x.consultant_name, x.customer_code || x.customer_name, x.title].filter(Boolean).join(" · ")
+          : (x.name || x.title);
   return [["", target === "users" ? "Nessuno" : "—"], ...list.map((x) => [x.id, text(x)])];
 }
 

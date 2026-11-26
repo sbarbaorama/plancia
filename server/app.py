@@ -292,6 +292,7 @@ def r_cons_create(h, conn, q, ctx):
 def r_cons_get(h, conn, q, ctx, cid):
     item = crud.get_item(conn, "consultations", cid, ctx)
     item["activities"] = ops.list_subtasks(conn, item["task_id"])
+    item["linked_tasks"] = ops.linked_tasks(conn, item["id"], ctx)
     return item
 
 

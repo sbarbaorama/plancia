@@ -155,6 +155,7 @@ add(Resource(
         "estimate_min": ("int", "Stima (minuti)", (0, 100000)),
         "recurrence_unit": ("enum", "Ripeti", RECURRENCE), "recurrence_every": ("int", "Ogni", (1, 1000)),
         "meeting_id": ("fk", "Verbale", "meetings"),
+        "linked_consultation_id": ("fk", "Consulenza", "consultations"),
         "assignee_id": ("fk", "Assegnato a", "users"), "visibility": ("enum", "Visibilità", VIS),
     },
     required=("title",),
@@ -165,18 +166,21 @@ add(Resource(
         (SELECT COUNT(*) FROM subtasks s WHERE s.task_id = t.id) AS subtasks_total,
         (SELECT COUNT(*) FROM subtasks s WHERE s.task_id = t.id AND s.done = 1) AS subtasks_done,
         (SELECT cn.id FROM consultations cn WHERE cn.task_id = t.id) AS consultation_id,
+        lc.date_start AS linked_consultation_date, lc.status AS linked_consultation_status,
+        (SELECT co.name FROM contacts co WHERE co.id = lc.consultant_id) AS linked_consultant_name,
         (SELECT COALESCE(SUM(te.minutes), 0) FROM time_entries te WHERE te.task_id = t.id) AS minutes_spent,
         {_att('tasks', 't')}
         FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
         LEFT JOIN meetings m ON m.id = t.meeting_id
         LEFT JOIN customers cu ON cu.id = COALESCE(t.customer_id, p.customer_id)
         LEFT JOIN users ua ON ua.id = t.assignee_id
-        LEFT JOIN users uo ON uo.id = t.owner_id""",
+        LEFT JOIN users uo ON uo.id = t.owner_id
+        LEFT JOIN consultations lc ON lc.id = t.linked_consultation_id""",
     order="t.due_date IS NULL, t.due_date, CASE t.priority WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END, t.id",
     search=("title", "notes"), customer_col="COALESCE(t.customer_id, p.customer_id)",
     date_col="t.start_date", visibility="team",
     form=[["title"], ["customer_id", "project_id"], ["priority", "status"], ["start_date", "due_date"],
-          ["estimate_min", "planned_for"], ["recurrence_unit", "recurrence_every"], ["assignee_id", "visibility"], ["notes"]],
+          ["estimate_min", "planned_for"], ["linked_consultation_id"], ["recurrence_unit", "recurrence_every"], ["assignee_id", "visibility"], ["notes"]],
     defaults={"priority": "media", "status": "da_fare", "recurrence_unit": "nessuna", "recurrence_every": 1, "visibility": "team"},
 ))
 

@@ -771,3 +771,12 @@ th.sortable.on .arrow { opacity: 1; }
 .plain-text { white-space: pre-wrap; }
 .doc .form .rich-area { min-height: 120px; }
 .doc .form .doc-big .rich-area { min-height: 42vh; }
+
+/* ------------------------------------------------------------------ task collegati alle consulenze */
+.item .hover-btn { opacity: 0; transition: opacity .12s; }
+.item:hover .hover-btn, .item .hover-btn:focus-visible, .item .hover-btn.on { opacity: 1; }
+.item .hover-btn.on { color: var(--accent-ink); }
+.list > .item.current { background: var(--accent-soft); }
+.linked-tasks { border: 1px solid var(--line); border-radius: var(--r-sm); }
+.linked-tasks .item { padding: 6px 10px; min-height: 0; cursor: default; }
+a.badge:hover { text-decoration: none; filter: brightness(.97); }

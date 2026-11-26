@@ -1,7 +1,7 @@
 // Righe di elenco riusate in tutte le sezioni (task, modifiche, scadenze, attese, verbali…).
 import { put } from "./api.js";
 import {
-  completeDeadline, emit, followUp, openChangeEditor, openConsultationEditor, openDeadlineEditor, openEventEditor,
+  completeDeadline, emit, followUp, linkTaskToConsultation, openChangeEditor, openConsultationEditor, openDeadlineEditor, openEventEditor,
   openTaskEditor, openWaitingEditor, startTimer,
 } from "./editors.js";
 import {
@@ -37,9 +37,14 @@ export function taskRow(t, { onChange = changed, customer = true, extra = null }
         t.estimate_min ? h("span", {}, fmtMin(t.estimate_min)) : null,
         t.recurrence_unit && t.recurrence_unit !== "nessuna" ? h("span", { title: "Ricorrente" }, "↻") : null,
         t.attachments_count ? h("span", { title: "Allegati", class: "row", style: { gap: "2px" } }, icon("clip"), t.attachments_count) : null,
+        t.linked_consultation_id ? h("a", { class: "badge accent", href: `#/consulenze?id=${t.linked_consultation_id}`, title: "Apri la consulenza", onclick: (e) => e.stopPropagation() },
+          `Consulenza ${fmtDate(t.linked_consultation_date)}${t.linked_consultant_name ? ` · ${t.linked_consultant_name}` : ""}`) : null,
         extra)),
     isTeam() && t.assignee_name ? avatar(t.assignee_name) : null,
     h("div", { class: `side-col ${dueClass(t.due_date, done)}` }, done ? fmtDate(t.closed_at) : fmtDue(t.due_date)),
+    t.kind !== "consulenza" ? h("button", { class: `icon-btn hover-btn${t.linked_consultation_id ? " on" : ""}`, type: "button",
+      title: t.linked_consultation_id ? "Cambia o togli la consulenza collegata" : "Collega a una consulenza", "aria-label": `Collega ${t.title} a una consulenza`,
+      onclick: (e) => { e.stopPropagation(); linkTaskToConsultation(t, onChange); } }, icon("consulenze")) : null,
     !done ? h("button", { class: "icon-btn", type: "button", title: "Avvia timer", "aria-label": `Avvia timer su ${t.title}`,
       onclick: (e) => { e.stopPropagation(); startTimer(t); } }, icon("play")) : null);
 }

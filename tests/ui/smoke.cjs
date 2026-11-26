@@ -307,6 +307,27 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     assert((await toasts()).some((t) => t.includes("2 attività riportate")), "manca l'avviso");
   });
 
+  await check("task collegato a una consulenza dall'elenco dei task", async () => {
+    const [sara] = await api("GET", "/api/contacts?q=Neri");
+    const c = await api("POST", "/api/consultations", { consultant_id: sara.id, date_start: "2027-09-07", next_mode: "settimana", title: "Giornata settembre" });
+    const t = await api("POST", "/api/tasks", { title: "Controllare licenze", due_date: "2027-09-30" });
+    await go("#/task");
+    const row = page.locator(".item", { hasText: "Controllare licenze" });
+    await row.hover();
+    await row.locator(".hover-btn").click();
+    await page.waitForSelector("#panel.open");
+    await click(`#panel .item:has-text("Giornata settembre")`);
+    assert((await api("GET", `/api/tasks/${t.id}`)).linked_consultation_id === c.id, "non collegato");
+    assert((await row.textContent()).includes("Consulenza"), "manca il badge nella riga del task");
+    // nella consulenza compare tra i task collegati e si chiude la giornata: il task passa alla successiva
+    await page.evaluate(async (id) => (await import("/js/editors.js")).openConsultationEditor({ id }), c.id);
+    await page.waitForSelector("#panel.open .linked-tasks");
+    assert((await page.textContent(".linked-tasks")).includes("Controllare licenze"), "non compare nella consulenza");
+    await page.click("#panel button:has-text(\"Chiudi giornata\")"); await page.waitForTimeout(900);
+    const moved = await api("GET", `/api/tasks/${t.id}`);
+    assert(moved.linked_consultation_id !== c.id && moved.linked_consultation_date === "2027-09-14", JSON.stringify(moved.linked_consultation_date));
+  });
+
   await check("nessun errore JavaScript", async () => { assert(!errors.length, errors.join(" | ")); });
   await browser.close();
   console.log(JSON.stringify(results));

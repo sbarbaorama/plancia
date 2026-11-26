@@ -6,7 +6,7 @@ import { applyFont, fontButton, printFontStyle } from "./fonts.js";
 import { imagesOf, pasteImages } from "./paste.js";
 import { renderRich, toPlain } from "./richtext.js";
 import {
-  addDays, autoGrow, choiceDialog, clear, closePanel, confirmDialog, copyText, fmtDate, fmtDateTime, h, icon, isTeam, label,
+  addDays, autoGrow, badge, customerChip, dueClass, choiceDialog, clear, closePanel, confirmDialog, copyText, fmtDate, fmtDateTime, h, icon, isTeam, label,
   loadContacts, loadCustomers, loadProjects, nowLocal, onSubmitOnce, openPanel, popMenu, printDoc, resolveCombos, showError, store, toast, todayISO,
 } from "./ui.js";
 
@@ -97,6 +97,7 @@ export async function openTaskEditor(task, { prefill = {}, onSave = changed } = 
   let historyBox = null;
   return openEditor("tasks", task, {
     prefill, onSave,
+    hide: task?.kind === "consulenza" ? ["linked_consultation_id"] : [],
     title: isNew ? "Nuovo task" : task.kind === "consulenza" ? "Task di consulenza" : "Task",
     extra: () => [
       h("div", { class: "field" }, h("span", { class: "small", style: { fontWeight: 600, color: "var(--muted)" } }, "Sotto-task"), sub.node),
@@ -313,6 +314,84 @@ async function checkDuplicateContact(data, id) {
   return confirmDialog("Questo contatto sembra già in rubrica", { detail: `Esiste già: ${who}. Vuoi salvarlo comunque?`, confirm: "Salva comunque", danger: false });
 }
 
+// ------------------------------------------------------------------ task collegati alle consulenze
+/** Sceglie la consulenza a cui collegare un task (prima quelle dello stesso cliente). */
+export async function linkTaskToConsultation(task, onDone = changed) {
+  const all = (await get("/api/consultations")).filter((c) => c.status !== "chiusa" || c.id === task.linked_consultation_id)
+    .sort((a, b) => a.date_start.localeCompare(b.date_start));
+  const cust = task.eff_customer_id || task.customer_id;
+  const same = cust ? all.filter((c) => c.customer_id === cust) : [];
+  const others = all.filter((c) => !same.includes(c));
+  const link = async (cid) => {
+    try {
+      await put(`/api/tasks/${task.id}`, { linked_consultation_id: cid });
+      toast(cid ? "Task collegato alla consulenza" : "Task scollegato dalla consulenza", "ok");
+      closePanel();
+      onDone();
+    } catch (err) { showError(err); }
+  };
+  const row = (c) => h("li", { class: `item${c.id === task.linked_consultation_id ? " current" : ""}`, onclick: () => link(c.id) },
+    h("div", { class: "main-col" }, h("div", { class: "t-title" }, `${fmtDate(c.date_start, { weekday: true })} · ${c.consultant_name || "Consulente?"}`),
+      h("div", { class: "meta" }, customerChip(c), c.title ? h("span", {}, c.title) : null, c.location ? h("span", {}, c.location) : null,
+        c.status === "in_corso" ? badge("in corso", "info") : null)),
+    c.id === task.linked_consultation_id ? badge("collegato", "accent") : h("span", { class: "small muted" }, "Collega"));
+  openPanel("Collega a una consulenza", h("div", { class: "form" },
+    h("p", {}, h("b", {}, task.title)),
+    h("p", { class: "hint" }, "Il task resta nell'elenco dei task con la sua scadenza, e compare anche nella consulenza e nel rapportino. "
+      + "Chiudendo la giornata, se è ancora aperto passa alla consulenza successiva."),
+    !all.length ? h("div", { class: "empty" }, "Nessuna consulenza pianificata. Creane una dalla sezione Consulenze.") : null,
+    same.length ? [h("div", { class: "group-title" }, "Dello stesso cliente"), h("ul", { class: "list card" }, same.map(row))] : null,
+    others.length ? [h("div", { class: "group-title" }, same.length ? "Altre consulenze" : "Consulenze aperte"), h("ul", { class: "list card" }, others.map(row))] : null,
+    task.linked_consultation_id ? h("div", {}, h("button", { class: "btn", type: "button", onclick: () => link(null) }, icon("x"), "Scollega dalla consulenza")) : null));
+}
+
+/** Riquadro «Task collegati» dentro la consulenza. */
+function linkedTasksBox(cons, onChange) {
+  const box = h("div", { class: "field" });
+  const draw = (items) => clear(box,
+    h("span", { class: "small", style: { fontWeight: 600, color: "var(--muted)" } }, "Task collegati"),
+    items.length ? h("ul", { class: "list linked-tasks" }, items.map((t) => {
+      const done = t.status === "chiuso";
+      return h("li", { class: `item${done ? " done" : ""}` },
+        h("input", { type: "checkbox", checked: done, "aria-label": done ? "Riapri" : "Segna come fatto", onchange: async (e) => {
+          try { await put(`/api/tasks/${t.id}`, { status: e.target.checked ? "chiuso" : "da_fare" }); reload(); onChange(); } catch (err) { showError(err); }
+        } }),
+        h("div", { class: "main-col" }, h("div", { class: "t-title" }, t.title),
+          h("div", { class: "meta" }, customerChip(t), t.due_date ? h("span", { class: dueClass(t.due_date, done) }, `scad. ${fmtDate(t.due_date)}`) : null)),
+        h("button", { class: "icon-btn", type: "button", title: "Scollega dalla consulenza", "aria-label": `Scollega ${t.title}`, onclick: async () => {
+          try { await put(`/api/tasks/${t.id}`, { linked_consultation_id: null }); reload(); onChange(); } catch (err) { showError(err); }
+        } }, icon("x")));
+    })) : h("span", { class: "small muted" }, "Nessuno. Collega qui i task da fare durante la giornata (restano anche nell'elenco dei task)."),
+    h("button", { class: "btn btn-sm btn-ghost", type: "button", style: { alignSelf: "flex-start" }, onclick: () => pickTask(items) }, icon("link"), "Collega un task"));
+  const reload = async () => draw((await get(`/api/consultations/${cons.id}`)).linked_tasks || []);
+  const pickTask = async (current) => {
+    const open = (await get("/api/tasks?open=1")).filter((t) => t.kind !== "consulenza" && !current.some((c) => c.id === t.id));
+    const q = h("input", { type: "search", placeholder: "Cerca tra i task aperti…", "aria-label": "Cerca task" });
+    const list = h("ul", { class: "list card", style: { maxHeight: "50vh", overflowY: "auto" } });
+    const fill = () => {
+      const s = q.value.trim().toLocaleLowerCase("it");
+      const shown = open.filter((t) => !s || t.title.toLocaleLowerCase("it").includes(s))
+        .sort((a, b) => (b.eff_customer_id === cons.customer_id) - (a.eff_customer_id === cons.customer_id));
+      clear(list, shown.length ? shown.slice(0, 100).map((t) => h("li", { class: "item", onclick: async () => {
+        try { await put(`/api/tasks/${t.id}`, { linked_consultation_id: cons.id }); pop.close(); reload(); onChange(); } catch (err) { showError(err); }
+      } }, h("div", { class: "main-col" }, h("div", { class: "t-title" }, t.title),
+        h("div", { class: "meta" }, customerChip(t), t.linked_consultation_id ? h("span", {}, "già in un'altra consulenza") : null,
+          t.due_date ? h("span", {}, `scad. ${fmtDate(t.due_date)}`) : null)))) : h("li", { class: "empty" }, "Nessun task aperto"));
+    };
+    q.addEventListener("input", fill);
+    const pop = h("dialog", { "aria-label": "Collega un task", style: { width: "min(560px, 92vw)" } },
+      h("div", { class: "dialog-body stack" }, h("h2", {}, "Collega un task alla consulenza"), q, list),
+      h("div", { class: "dialog-foot" }, h("button", { class: "btn", type: "button", onclick: () => pop.close() }, "Chiudi")));
+    pop.addEventListener("close", () => pop.remove());
+    document.body.append(pop);
+    fill();
+    pop.showModal();
+    q.focus();
+  };
+  draw(cons.linked_tasks || []);
+  return box;
+}
+
 // ------------------------------------------------------------------ consulenze
 export async function openConsultationEditor(cons, { prefill = {}, onSave = changed } = {}) {
   const isNew = !cons?.id;
@@ -333,6 +412,7 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
     h("div", { class: "form-row" }, field("date_start", fields.date_start, v.date_start, fk), field("date_end", fields.date_end, v.date_end, fk)),
     h("div", { class: "form-row" }, field("location", fields.location, v.location, fk), field("project_id", extraFields.project_id, v.project_id, fk)),
     h("div", { class: "field" }, h("span", { class: "small", style: { fontWeight: 600, color: "var(--muted)" } }, "Attività"), acts.node),
+    !isNew ? linkedTasksBox(full, () => {}) : h("p", { class: "hint" }, "Dopo aver creato la consulenza potrai collegarle dei task già esistenti."),
     field("closing_note", fields.closing_note, v.closing_note, fk),
     field("notes", extraFields.notes, v.notes, fk),
     h("fieldset", { class: "card card-pad next-cons" },
@@ -377,7 +457,8 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
       if (action === "close") {
         const n = r?.next;
         toast(n ? `Giornata chiusa. ${r.next_created ? "Creata la prossima consulenza" : "Prossima consulenza"}: ${fmtDate(n.date_start, { weekday: true })}`
-          + (r.carried ? ` · ${r.carried === 1 ? "1 attività riportata" : `${r.carried} attività riportate`}` : "") : "Giornata chiusa", "ok", 6000);
+          + (r.carried ? ` · ${r.carried === 1 ? "1 attività riportata" : `${r.carried} attività riportate`}` : "")
+          + (r.moved_tasks ? ` · ${r.moved_tasks === 1 ? "1 task collegato spostato" : `${r.moved_tasks} task collegati spostati`}` : "") : "Giornata chiusa", "ok", 6000);
       } else toast("Riaperta", "ok");
       closePanel();
       onSave(r || saved);
@@ -397,7 +478,8 @@ export async function openConsultationEditor(cons, { prefill = {}, onSave = chan
 }
 
 export function consultationText(c) {
-  const acts = (c.activities || []).map((a) => `- [${a.done ? "x" : " "}] ${a.title}${a.outcome ? ` — ${a.outcome}` : ""}`).join("\n");
+  const acts = [...(c.activities || []).map((a) => `- [${a.done ? "x" : " "}] ${a.title}${a.outcome ? ` — ${a.outcome}` : ""}`),
+    ...(c.linked_tasks || []).map((t) => `- [${t.status === "chiuso" ? "x" : " "}] ${t.title}`)].join("\n");
   return [`Consulenza ${fmtDate(c.date_start, { year: true })}${c.date_end && c.date_end !== c.date_start ? ` – ${fmtDate(c.date_end, { year: true })}` : ""}`,
     `Consulente: ${c.consultant_name || ""}${c.consultant_company ? ` (${c.consultant_company})` : ""}`,
     c.customer_name ? `Cliente: ${c.customer_name}` : "", c.location ? `Luogo: ${c.location}` : "", "", "Attività:", acts || "—",
@@ -417,7 +499,8 @@ export async function printConsultation(c) {
       c.customer_name ? ` · Cliente: ${c.customer_name}` : "", c.location ? ` · ${c.location}` : ""),
     h("h2", {}, "Attività"),
     h("table", {}, h("tr", {}, h("th", {}, "Attività"), h("th", {}, "Fatto"), h("th", {}, "Esito")),
-      (c.activities || []).map((a) => h("tr", {}, h("td", {}, a.title), h("td", {}, a.done ? "Sì" : "No"), h("td", {}, a.outcome || "")))),
+      (c.activities || []).map((a) => h("tr", {}, h("td", {}, a.title), h("td", {}, a.done ? "Sì" : "No"), h("td", {}, a.outcome || ""))),
+      (c.linked_tasks || []).map((t) => h("tr", {}, h("td", {}, t.title), h("td", {}, t.status === "chiuso" ? "Sì" : "No"), h("td", {}, "")))),
     notes ? [h("h2", {}, "Note"), h("div", { class: "rich-print" }, notes)] : null,
     closing ? [h("h2", {}, "Note di chiusura"), h("div", { class: "rich-print" }, closing)] : null,
     rest.length ? [h("h2", {}, "Immagini"), h("div", { class: "print-images" }, rest.map((a) => h("figure", {}, h("img", { src: `/api/attachments/${a.id}/file`, alt: a.name }), h("figcaption", {}, a.name))))] : null,

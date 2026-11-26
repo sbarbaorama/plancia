@@ -423,12 +423,18 @@ def close_consultation(conn, cid, note, ctx=LOCAL):
                                (cons["consultant_id"], cons["id"], cons["date_start"], cons["date_start"], cons["id"])).fetchone()
             target = get_item(conn, "consultations", row[0]) if row else None
         carried = _carry_activities(conn, cons, target, ctx) if target and cons["carry_open"] else 0
+        moved = 0
+        if target and cons["carry_open"]:
+            # i task collegati ancora aperti passano alla consulenza successiva
+            moved = conn.execute("UPDATE tasks SET linked_consultation_id = ?, updated_at = ? WHERE linked_consultation_id = ? AND status != 'chiuso'",
+                                 (target["id"], now_iso(), cons["id"])).rowcount
         if target:
             conn.execute("UPDATE consultations SET next_id = ? WHERE id = ?", (target["id"], cons["id"]))
         out = get_item(conn, "consultations", cons["id"])
         out["next"] = get_item(conn, "consultations", target["id"]) if target else None
         out["next_created"] = created
         out["carried"] = carried
+        out["moved_tasks"] = moved
     return out
 
 
@@ -452,6 +458,12 @@ def duplicate_consultation(conn, cid, new_start=None, ctx=LOCAL):
         "date_start": target.isoformat(), "date_end": (target + timedelta(days=days)).isoformat() if days else None,
         "title": cons["title"], "project_id": cons["project_id"], "activities": open_acts,
     }, ctx)
+
+
+def linked_tasks(conn, cid, ctx=LOCAL):
+    """I task collegati a una consulenza (aperti prima, poi chiusi)."""
+    items = list_items(conn, "tasks", {"linked_consultation_id": cid}, ctx)
+    return sorted(items, key=lambda t: (t["status"] == "chiuso", t["due_date"] or "9999", t["id"]))
 
 
 def delete_consultation(conn, cid, ctx=LOCAL):
