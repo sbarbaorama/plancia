@@ -427,6 +427,8 @@ def _finalize(conn, resource, record, old=None):
         start, due = record.get("start_date", old.get("start_date")), record.get("due_date", old.get("due_date"))
         if start and due and start > due:
             raise ValidationError("L'inizio non può essere dopo la scadenza")
+        if record.get("linked_consultation_id") and old.get("kind") == "consulenza":
+            raise ValidationError("Questo task è già una consulenza: non si collega a un'altra")
     elif resource == "events":
         start, end = record.get("start", old.get("start")), record.get("end", old.get("end"))
         if start and end and end < start:

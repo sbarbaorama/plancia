@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import re
 from datetime import date, datetime, timedelta
 
 from . import crud
@@ -21,24 +22,64 @@ SETTINGS_DEFAULTS = {
     "day_end": "17:30",
     "notifications": 1,
     "legacy_db_path": "",
+    "home_extras": 1,            # meteo e notizie nella pagina Oggi
+    "weather_place": None,       # {"name", "region", "country", "lat", "lon"}
+    "news_topics": [],           # interessi: ognuno è una ricerca su Google News
+    "news_feeds": [],            # feed RSS aggiunti: [{"name", "url"}]
     "last_backup": None,
     "last_backup_error": None,
 }
 THEMES = ("auto", "chiaro", "scuro", "salvia", "lavanda", "sabbia", "cobalto", "corallo", "smeraldo")
 PUBLIC_SETTINGS = ("backup_dir", "retention_days", "theme", "density", "work_hours", "day_start", "day_end",
-                   "notifications", "legacy_db_path")
+                   "notifications", "legacy_db_path", "home_extras", "weather_place", "news_topics", "news_feeds")
+JSON_SETTINGS = ("weather_place", "news_topics", "news_feeds")
 
 
 def get_settings(conn):
     values = dict(SETTINGS_DEFAULTS)
     for row in conn.execute("SELECT key, value FROM settings"):
         values[row["key"]] = row["value"]
-    for key, cast in (("retention_days", int), ("work_hours", float), ("notifications", int)):
+    for key in JSON_SETTINGS:
+        if isinstance(values[key], str):
+            try:
+                values[key] = json.loads(values[key])
+            except ValueError:
+                values[key] = SETTINGS_DEFAULTS[key]
+    for key, cast in (("retention_days", int), ("work_hours", float), ("notifications", int), ("home_extras", int)):
         try:
             values[key] = cast(values[key])
         except (TypeError, ValueError):
             values[key] = SETTINGS_DEFAULTS[key]
     return values
+
+
+def _clean_place(value):
+    if value in (None, "", {}):
+        return None
+    if not isinstance(value, dict):
+        raise ValidationError("Località non valida")
+    try:
+        lat, lon = float(value["lat"]), float(value["lon"])
+    except (KeyError, TypeError, ValueError):
+        raise ValidationError("Località non valida")
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValidationError("Località non valida")
+    return json.dumps({"name": str(value.get("name") or "")[:100], "region": str(value.get("region") or "")[:100],
+                       "country": str(value.get("country") or "")[:100], "lat": lat, "lon": lon}, ensure_ascii=False)
+
+
+def _clean_feeds(value):
+    if not isinstance(value, list) or len(value) > 20:
+        raise ValidationError("Feed: al massimo 20")
+    out = []
+    for f in value:
+        if not isinstance(f, dict):
+            raise ValidationError("Feed non valido")
+        url = str(f.get("url") or "").strip()
+        if not re.match(r"^https?://[^\s/]+\.[^\s]+$", url, re.I) or len(url) > 500:
+            raise ValidationError(f"Indirizzo del feed non valido: {url[:80]}")
+        out.append({"name": str(f.get("name") or "").strip()[:80], "url": url})
+    return out
 
 
 def put_settings(conn, data, internal=False):
@@ -66,8 +107,16 @@ def put_settings(conn, data, internal=False):
             raise ValidationError("Tema non valido")
         elif key == "density" and value not in ("comoda", "compatta"):
             raise ValidationError("Densità non valida")
-        elif key == "notifications":
+        elif key in ("notifications", "home_extras"):
             value = 1 if value in (1, True, "1", "true") else 0
+        elif key == "weather_place":
+            value = _clean_place(value)
+        elif key == "news_topics":
+            if not isinstance(value, list) or len(value) > 20:
+                raise ValidationError("Interessi: al massimo 20")
+            value = json.dumps(list(dict.fromkeys(str(t).strip()[:80] for t in value if str(t).strip())), ensure_ascii=False)
+        elif key == "news_feeds":
+            value = json.dumps(_clean_feeds(value), ensure_ascii=False)
         elif key in ("backup_dir", "legacy_db_path"):
             value = str(value or "").strip()
         clean[key] = value
@@ -423,12 +472,18 @@ def close_consultation(conn, cid, note, ctx=LOCAL):
                                (cons["consultant_id"], cons["id"], cons["date_start"], cons["date_start"], cons["id"])).fetchone()
             target = get_item(conn, "consultations", row[0]) if row else None
         carried = _carry_activities(conn, cons, target, ctx) if target and cons["carry_open"] else 0
+        moved = 0
+        if target and cons["carry_open"]:
+            # i task collegati ancora aperti passano alla consulenza successiva
+            moved = conn.execute("UPDATE tasks SET linked_consultation_id = ?, updated_at = ? WHERE linked_consultation_id = ? AND status != 'chiuso'",
+                                 (target["id"], now_iso(), cons["id"])).rowcount
         if target:
             conn.execute("UPDATE consultations SET next_id = ? WHERE id = ?", (target["id"], cons["id"]))
         out = get_item(conn, "consultations", cons["id"])
         out["next"] = get_item(conn, "consultations", target["id"]) if target else None
         out["next_created"] = created
         out["carried"] = carried
+        out["moved_tasks"] = moved
     return out
 
 
@@ -452,6 +507,12 @@ def duplicate_consultation(conn, cid, new_start=None, ctx=LOCAL):
         "date_start": target.isoformat(), "date_end": (target + timedelta(days=days)).isoformat() if days else None,
         "title": cons["title"], "project_id": cons["project_id"], "activities": open_acts,
     }, ctx)
+
+
+def linked_tasks(conn, cid, ctx=LOCAL):
+    """I task collegati a una consulenza (aperti prima, poi chiusi)."""
+    items = list_items(conn, "tasks", {"linked_consultation_id": cid}, ctx)
+    return sorted(items, key=lambda t: (t["status"] == "chiuso", t["due_date"] or "9999", t["id"]))
 
 
 def delete_consultation(conn, cid, ctx=LOCAL):

@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from . import attachments, auth, backup, crud, importer, legacy, ops, ricorrenze, rubrica
+from . import attachments, auth, backup, crud, esterni, importer, legacy, ops, ricorrenze, rubrica
 from .crud import Ctx, Forbidden, NotFound, ValidationError
 from .db import connect, open_db
 from .schema import R, public_schema
@@ -292,6 +292,7 @@ def r_cons_create(h, conn, q, ctx):
 def r_cons_get(h, conn, q, ctx, cid):
     item = crud.get_item(conn, "consultations", cid, ctx)
     item["activities"] = ops.list_subtasks(conn, item["task_id"])
+    item["linked_tasks"] = ops.linked_tasks(conn, item["id"], ctx)
     return item
 
 
@@ -351,6 +352,31 @@ def r_time_csv(h, conn, q, ctx):
     start, end = _date(q, "from", today.replace(day=1)), _date(q, "to", today)
     return TextResponse(ops.time_csv(conn, start, end, ctx, q.get("user", "me")), "text/csv; charset=utf-8",
                         f"ore_{start.isoformat()}_{end.isoformat()}.csv")
+
+
+# meteo e notizie (pagina Oggi)
+@route("GET", r"/api/weather")
+def r_weather(h, conn, q, ctx):
+    try:
+        return esterni.weather(ops.get_settings(conn).get("weather_place"), refresh=q.get("refresh") == "1")
+    except ValidationError:
+        raise
+    except Exception as e:
+        return {"error": f"Meteo non raggiungibile ({e.__class__.__name__}). Controlla la connessione a internet."}
+
+
+@route("GET", r"/api/weather/places")
+def r_weather_places(h, conn, q, ctx):
+    try:
+        return esterni.search_places(q.get("q"))
+    except Exception:
+        raise ValidationError("Ricerca della località non riuscita: controlla la connessione a internet")
+
+
+@route("GET", r"/api/news")
+def r_news(h, conn, q, ctx):
+    s = ops.get_settings(conn)
+    return esterni.news(s.get("news_topics") or [], s.get("news_feeds") or [], refresh=q.get("refresh") == "1")
 
 
 # appuntamenti ricorrenti

@@ -2,6 +2,7 @@
 import { get } from "../api.js";
 import { openEventEditor, openTaskEditor } from "../editors.js";
 import { changeRow, consultationRow, deadlineRow, eventRow, list, taskRow, waitRow } from "../rows.js";
+import { newsCard, weatherCard } from "../esterni.js";
 import { card, clear, fmtDate, fmtLongDate, fmtMin, h, icon, kpi, me, plural, store } from "../ui.js";
 
 function greeting() {
@@ -22,6 +23,8 @@ export async function render(root, ctx) {
   const agenda = [...d.consultations_today.map((c) => ({ t: "00:00", node: consultationRow(c) })),
     ...d.events_today.map((e) => ({ t: e.all_day ? "00:00" : e.start.slice(11, 16), node: eventRow(e) }))].sort((a, b) => a.t.localeCompare(b.t));
   const late = [...d.overdue, ...d.due_today.filter((t) => t.planned_for !== d.today)];
+  // meteo e notizie: si caricano dopo, senza far aspettare la pagina
+  const extras = store.settings?.home_extras ?? 1;
 
   clear(root,
     h("div", { class: "page-head" },
@@ -43,8 +46,10 @@ export async function render(root, ctx) {
         late.length ? card("In ritardo e in scadenza oggi", list(late, taskRow, ""), { meta: plural(late.length, "task", "task") }) : null,
         d.due_week.length ? card("Scadono nei prossimi 7 giorni", list(d.due_week, taskRow, "")) : null,
         d.in_progress.filter((t) => t.planned_for !== d.today).length
-          ? card("In corso", list(d.in_progress.filter((t) => t.planned_for !== d.today), taskRow, "")) : null),
+          ? card("In corso", list(d.in_progress.filter((t) => t.planned_for !== d.today), taskRow, "")) : null,
+        extras ? newsCard() : null),
       h("div", { class: "col-side" },
+        extras ? weatherCard() : null,
         card("Agenda", agenda.length ? h("ul", { class: "list" }, agenda.map((a) => a.node)) : h("div", { class: "empty" }, "Nessun appuntamento oggi"),
           { actions: h("button", { class: "btn btn-sm", type: "button", onclick: () => openEventEditor(null) }, "+") }),
         d.waiting_followup.length ? card("Da sollecitare", list(d.waiting_followup, waitRow, "")) : null,

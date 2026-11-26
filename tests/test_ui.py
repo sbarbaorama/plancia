@@ -11,7 +11,8 @@ import threading
 import unittest
 from pathlib import Path
 
-from server import app
+from server import app, esterni
+from tests.test_esterni import ATOM, FORECAST, GEO, RSS
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "tests" / "ui" / "smoke.cjs"
@@ -39,6 +40,18 @@ NODE, ENV = _node_env()
 @unittest.skipUnless(NODE, "Node.js con Playwright non disponibile")
 class UiSmoke(unittest.TestCase):
     def test_interfaccia(self):
+        # meteo e notizie: risposte d'esempio, le prove non vanno su internet
+        def fake(url):
+            if "geocoding-api" in url:
+                return json.dumps(GEO).encode()
+            if "//api.open-meteo.com" in url:
+                return json.dumps(FORECAST).encode()
+            if "news.google.com" in url:
+                return RSS.encode()
+            return ATOM.encode()
+        orig, esterni.fetch = esterni.fetch, fake
+        esterni.clear_cache()
+        self.addCleanup(setattr, esterni, "fetch", orig)
         tmp = Path(tempfile.mkdtemp())
         cfg = app.Config(tmp / "data" / "plancia.db", ROOT / "web", port=0)
         server = app.make_server(cfg)

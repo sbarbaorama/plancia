@@ -240,6 +240,27 @@ class CrudTest(Base):
         self.assertEqual(c["notes"], "<p>N <b>b</b></p>")
         self.assertEqual(ops.close_consultation(self.conn, c["id"], "<p>fine<script>x</script></p>")["closing_note"], "<p>fine</p>")
 
+    def test_task_linked_to_consultation(self):
+        co = self.mk("contacts", name="Sara Neri", is_consultant=True)
+        c = ops.create_consultation(self.conn, {"consultant_id": co["id"], "date_start": "2027-02-01", "next_mode": "settimana"})
+        t1 = crud.create_item(self.conn, "tasks", {"title": "Verificare backup", "linked_consultation_id": c["id"]})
+        t2 = crud.create_item(self.conn, "tasks", {"title": "Aprire ticket", "linked_consultation_id": c["id"], "status": "chiuso"})
+        self.assertEqual(t1["linked_consultation_date"], "2027-02-01")
+        self.assertEqual(t1["linked_consultant_name"], "Sara Neri")
+        self.assertEqual([t["title"] for t in ops.linked_tasks(self.conn, c["id"])], ["Verificare backup", "Aprire ticket"])
+        with self.assertRaises(crud.ValidationError):  # il task della consulenza stessa non si collega
+            crud.update_item(self.conn, "tasks", c["task_id"], {"linked_consultation_id": c["id"]})
+        r = ops.close_consultation(self.conn, c["id"], "")
+        self.assertEqual(r["moved_tasks"], 1)
+        self.assertEqual(crud.get_item(self.conn, "tasks", t1["id"])["linked_consultation_id"], r["next"]["id"])
+        self.assertEqual(crud.get_item(self.conn, "tasks", t2["id"])["linked_consultation_id"], c["id"])
+        # scollegare
+        self.assertIsNone(crud.update_item(self.conn, "tasks", t1["id"], {"linked_consultation_id": None})["linked_consultation_id"])
+        # eliminando la consulenza il task resta, scollegato
+        t3 = crud.create_item(self.conn, "tasks", {"title": "Altro", "linked_consultation_id": r["next"]["id"]})
+        ops.delete_consultation(self.conn, r["next"]["id"])
+        self.assertIsNone(crud.get_item(self.conn, "tasks", t3["id"])["linked_consultation_id"])
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])
