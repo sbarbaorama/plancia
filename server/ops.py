@@ -82,6 +82,73 @@ def _clean_feeds(value):
     return out
 
 
+# ---------------------------------------------------------------- pagina Oggi personalizzata (per utente)
+
+HOME_PANELS = ("kpis", "plan", "late", "week", "progress", "news", "agenda", "weather", "followup", "deadlines",
+               "changes", "inbox", "meetings", "notes", "procedures", "consultations")
+HOME_ZONES = ("top", "main", "side")
+HOME_HEIGHTS = ("auto", "compatta", "alta")
+HOME_DEFAULT = {
+    "weatherChip": True,
+    "panels": [
+        {"id": "kpis", "zone": "top", "height": "auto"},
+        {"id": "plan", "zone": "main", "height": "auto"}, {"id": "late", "zone": "main", "height": "auto"},
+        {"id": "week", "zone": "main", "height": "auto"}, {"id": "progress", "zone": "main", "height": "auto"},
+        {"id": "news", "zone": "main", "height": "auto"},
+        {"id": "agenda", "zone": "side", "height": "auto"}, {"id": "followup", "zone": "side", "height": "auto"},
+        {"id": "deadlines", "zone": "side", "height": "auto"}, {"id": "changes", "zone": "side", "height": "auto"},
+        {"id": "inbox", "zone": "side", "height": "auto"}, {"id": "meetings", "zone": "side", "height": "auto"},
+    ],
+}
+
+
+def _home_key(ctx):
+    return f"home_layout:{ctx.user_id}"
+
+
+def get_home_layout(conn, ctx=LOCAL):
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (_home_key(ctx),)).fetchone()
+    if row:
+        try:
+            return clean_home_layout(json.loads(row[0]))
+        except (ValueError, ValidationError):
+            pass
+    layout = json.loads(json.dumps(HOME_DEFAULT))
+    # chi aveva spento meteo e notizie le ritrova spente
+    if str(get_settings(conn).get("home_extras", 1)) == "0":
+        layout["weatherChip"] = False
+        layout["panels"] = [p for p in layout["panels"] if p["id"] != "news"]
+    return layout
+
+
+def clean_home_layout(data):
+    if not isinstance(data, dict) or not isinstance(data.get("panels"), list):
+        raise ValidationError("Disposizione non valida")
+    panels, seen = [], set()
+    for p in data["panels"][:len(HOME_PANELS)]:
+        if not isinstance(p, dict) or p.get("id") not in HOME_PANELS or p["id"] in seen:
+            raise ValidationError("Pannello non valido")
+        zone = p.get("zone") if p.get("zone") in HOME_ZONES else "main"
+        height = p.get("height") if p.get("height") in HOME_HEIGHTS else "auto"
+        seen.add(p["id"])
+        panels.append({"id": p["id"], "zone": zone, "height": height})
+    return {"weatherChip": bool(data.get("weatherChip", True)), "panels": panels}
+
+
+def put_home_layout(conn, data, ctx=LOCAL):
+    layout = clean_home_layout(data)
+    with transaction(conn):
+        conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                     (_home_key(ctx), json.dumps(layout)))
+    return layout
+
+
+def reset_home_layout(conn, ctx=LOCAL):
+    with transaction(conn):
+        conn.execute("DELETE FROM settings WHERE key = ?", (_home_key(ctx),))
+    return get_home_layout(conn, ctx)
+
+
 def put_settings(conn, data, internal=False):
     if not isinstance(data, dict):
         raise ValidationError("Impostazioni non valide")

@@ -178,6 +178,21 @@ def r_settings(h, conn, q, ctx):
     return s
 
 
+@route("GET", r"/api/prefs/home")
+def r_home_get(h, conn, q, ctx):
+    return ops.get_home_layout(conn, ctx)
+
+
+@route("PUT", r"/api/prefs/home")
+def r_home_put(h, conn, q, ctx):
+    return ops.put_home_layout(conn, h.body(), ctx)
+
+
+@route("DELETE", r"/api/prefs/home")
+def r_home_reset(h, conn, q, ctx):
+    return ops.reset_home_layout(conn, ctx)
+
+
 @route("PUT", r"/api/settings", admin=True)
 def r_settings_put(h, conn, q, ctx):
     ops.put_settings(conn, h.body())

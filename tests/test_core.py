@@ -261,6 +261,29 @@ class CrudTest(Base):
         ops.delete_consultation(self.conn, r["next"]["id"])
         self.assertIsNone(crud.get_item(self.conn, "tasks", t3["id"])["linked_consultation_id"])
 
+    def test_home_layout(self):
+        d = ops.get_home_layout(self.conn)
+        self.assertTrue(d["weatherChip"])
+        self.assertEqual(d["panels"][0], {"id": "kpis", "zone": "top", "height": "auto"})
+        lay = ops.put_home_layout(self.conn, {"weatherChip": False, "panels": [
+            {"id": "meetings", "zone": "main", "height": "alta"}, {"id": "notes", "zone": "side"}, {"id": "plan", "zone": "boh", "height": "x"}]})
+        self.assertEqual(lay["panels"][2], {"id": "plan", "zone": "main", "height": "auto"})
+        self.assertEqual(ops.get_home_layout(self.conn), lay)
+        with self.assertRaises(crud.ValidationError):
+            ops.put_home_layout(self.conn, {"panels": [{"id": "plan"}, {"id": "plan"}]})
+        with self.assertRaises(crud.ValidationError):
+            ops.put_home_layout(self.conn, {"panels": [{"id": "<script>"}]})
+        # ogni utente ha la sua; si torna alla predefinita
+        other = crud.Ctx(2) if hasattr(crud, "Ctx") else None
+        if other:
+            self.assertTrue(ops.get_home_layout(self.conn, other)["weatherChip"])
+        self.assertTrue(ops.reset_home_layout(self.conn)["weatherChip"])
+        # chi aveva spento meteo e notizie li ritrova spenti
+        ops.put_settings(self.conn, {"home_extras": 0})
+        d = ops.get_home_layout(self.conn)
+        self.assertFalse(d["weatherChip"])
+        self.assertNotIn("news", [p["id"] for p in d["panels"]])
+
     def test_event_end_defaults_and_range(self):
         e = self.mk("events", title="Call", start=f"{TODAY.isoformat()}T10:00")
         self.assertEqual(e["end"], e["start"])

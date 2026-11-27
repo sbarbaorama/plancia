@@ -271,6 +271,7 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
       const r = document.createRange(); r.setStart(t, 10); r.setEnd(t, 20);
       const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
     });
+    await page.waitForTimeout(150);
     await page.selectOption(".rich[data-rich=discussion] .rt-size", "4");
     await page.keyboard.press("Control+s"); await page.waitForTimeout(700);
     const d = (await api("GET", `/api/meetings/${m.id}`)).discussion;
@@ -336,12 +337,63 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     const st = await api("GET", "/api/settings");
     assert(st.weather_place && st.weather_place.name === "Trento" && st.news_topics.includes("cybersecurity"), JSON.stringify([st.weather_place, st.news_topics]));
     await go("#/oggi");
-    await page.waitForSelector(".w-temp");
-    assert((await page.textContent(".w-temp")) === "6°", "temperatura");
-    assert((await page.textContent(".weather")).includes("pioggia 70%"), "previsione di oggi");
+    await page.waitForSelector(".weather-chip-wrap:not([hidden]) .weather-chip b");
+    assert((await page.textContent(".weather-chip b")) === "6°", "temperatura nell'icona compatta");
+    assert((await page.textContent(".weather-chip .w-chip-place")) === "Trento", "città nell'icona compatta");
+    await page.click(".weather-chip"); await page.waitForSelector(".weather-pop .w-temp");
+    assert((await page.textContent(".weather-pop .weather")).includes("pioggia 70%"), "previsione di oggi nel dettaglio");
+    await page.mouse.click(5, 300);
     await page.waitForSelector(".news-link");
     const a = await page.$eval(".news-link", (el) => [el.getAttribute("href"), el.target, el.rel, el.textContent]);
     assert(a[0].startsWith("https://news.google.com/") && a[1] === "_blank" && a[2].includes("noopener") && a[3].includes("vulnerabilità"), JSON.stringify(a));
+  });
+
+  await check("Oggi personalizzabile: aggiungi, allarga, trascina, togli", async () => {
+    await api("DELETE", "/api/prefs/home");
+    await go("#/oggi");
+    await click(".page-head >> text=Personalizza");
+    await page.waitForSelector(".home.editing");
+    // aggiungi i post-it fissati
+    await page.click(".home-edit-bar >> text=Aggiungi pannello");
+    await click('.menu >> text=Post-it fissati');
+    let lay = await api("GET", "/api/prefs/home");
+    assert(lay.panels.some((p) => p.id === "notes" && p.zone === "side"), "post-it non aggiunti");
+    // l'agenda: stretta → larga → intera → stretta
+    await click('.home-panel[data-id="agenda"] >> text=↔ Stretta');
+    assert(await page.$('.col-main .home-panel[data-id="agenda"]'), "l'agenda non è nella colonna larga");
+    await click('.home-panel[data-id="agenda"] >> text=↔ Larga');
+    assert(await page.$('.home-top .home-panel[data-id="agenda"]'), "l'agenda non è a tutta larghezza");
+    await click('.home-panel[data-id="agenda"] >> text=↔ Intera');
+    lay = await api("GET", "/api/prefs/home");
+    assert(lay.panels.find((p) => p.id === "agenda").zone === "side", "il giro delle larghezze non torna a stretta");
+    // altezza compatta
+    await click('.home-panel[data-id="plan"] >> text=↕ Automatica');
+    lay = await api("GET", "/api/prefs/home");
+    assert(lay.panels.find((p) => p.id === "plan").height === "compatta", "altezza");
+    // trascina i post-it in cima alla colonna larga
+    await page.waitForSelector('.home-panel[data-id="notes"] .empty, .home-panel[data-id="notes"] .mini-notes');
+    await page.waitForSelector('.home-panel[data-id="news"] .news-link, .home-panel[data-id="news"] .card-body > .small');
+    await page.waitForTimeout(300);
+    await page.setViewportSize({ width: 1360, height: 2400 }); // tutto visibile: niente scorrimento durante il trascinamento
+    await page.dragAndDrop('.home-panel[data-id="notes"] .home-tools b', '.col-main .home-panel[data-id="plan"] .home-tools', { targetPosition: { x: 40, y: 2 } });
+    await page.waitForTimeout(700);
+    await page.setViewportSize({ width: 1360, height: 900 });
+    lay = await api("GET", "/api/prefs/home");
+    const main = lay.panels.filter((p) => p.zone === "main").map((p) => p.id);
+    assert(main[0] === "notes", `ordine della colonna larga: ${main}`);
+    // togli le notizie e chiudi
+    await click('.home-panel[data-id="news"] .home-tools .icon-btn');
+    lay = await api("GET", "/api/prefs/home");
+    assert(!lay.panels.some((p) => p.id === "news"), "notizie non tolte");
+    await click(".page-head >> text=Fine");
+    assert(await page.$(".home.editing") === null && await page.$('.home-panel[data-id="notes"]'), "uscita dalla personalizzazione");
+    // anche da Impostazioni
+    await go("#/impostazioni");
+    await page.waitForSelector(".home-pick");
+    await page.uncheck('.home-pick input[aria-label="Mostra Post-it fissati"]'); await page.waitForTimeout(500);
+    lay = await api("GET", "/api/prefs/home");
+    assert(!lay.panels.some((p) => p.id === "notes"), "non tolto dalle impostazioni");
+    await api("DELETE", "/api/prefs/home");
   });
 
   await check("nessun errore JavaScript", async () => { assert(!errors.length, errors.join(" | ")); });

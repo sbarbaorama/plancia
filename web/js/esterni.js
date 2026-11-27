@@ -118,8 +118,7 @@ export function extrasSettings(s, onSaved) {
     if (url) save({ news_feeds: [...feeds, { name: feedName.value.trim(), url }] }, "Feed aggiunto");
   };
   return card("Meteo e notizie", h("div", { class: "card-body stack" },
-    h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!s.home_extras, onchange: (e) => save({ home_extras: e.target.checked ? 1 : 0 }, "Salvato") }),
-      "Mostra meteo e notizie nella pagina Oggi"),
+    h("p", { class: "hint" }, "Dove mostrarli (icona del meteo, riquadro delle notizie) si sceglie in «Pagina Oggi»."),
     h("div", { class: "stack", style: { gap: "6px" } },
       h("b", { class: "small" }, "Città del meteo"),
       s.weather_place ? h("div", { class: "row small" }, icon("sole-nuvola"), h("span", { style: { flex: 1 } }, [s.weather_place.name, s.weather_place.region, s.weather_place.country].filter(Boolean).join(", ")),
@@ -139,4 +138,37 @@ export function extrasSettings(s, onSaved) {
         h("button", { class: "icon-btn", type: "button", "aria-label": `Togli ${f.name || f.url}`, onclick: () => save({ news_feeds: feeds.filter((x) => x !== f) }, "Feed tolto") }, icon("trash"))))) : null,
       h("div", { class: "form-row" }, feedName, feedUrl),
       h("div", {}, h("button", { class: "btn", type: "button", onclick: addFeed }, icon("plus"), "Aggiungi feed")))));
+}
+
+/** Meteo compatto: icona e temperatura (accanto a «Pianifica la giornata»); il clic apre il dettaglio. */
+export function weatherChip() {
+  const btn = h("button", { class: "btn weather-chip", type: "button", title: "Meteo", "aria-expanded": "false" }, icon("nuvola"), h("span", { class: "muted" }, "…"));
+  const pop = h("div", { class: "weather-pop", hidden: true });
+  const wrap = h("span", { class: "weather-chip-wrap", hidden: true }, btn, pop);
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (pop.hidden) { clear(pop, weatherCard()); }
+    pop.hidden = !pop.hidden;
+    btn.setAttribute("aria-expanded", String(!pop.hidden));
+  });
+  const off = (e) => {
+    if (!wrap.isConnected) { document.removeEventListener("mousedown", off); return; }
+    if (!wrap.contains(e.target)) { pop.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+  };
+  document.addEventListener("mousedown", off);
+  get("/api/weather").then((w) => {
+    if (w.error) return;
+    if (!w.place) {
+      clear(btn, icon("sole-nuvola"), h("span", { class: "small" }, "Imposta il meteo"));
+      btn.onclick = (e) => { e.stopImmediatePropagation(); location.hash = "#/impostazioni"; };
+      wrap.hidden = false;
+      return;
+    }
+    const c = w.current;
+    clear(btn, h("span", { class: "w-chip-icon" }, icon(c.icon)), h("b", {}, fmtT(c.temp)), h("span", { class: "w-chip-place" }, w.place.name));
+    btn.title = `${w.place.name}: ${c.text}, ${fmtT(c.temp)} · oggi min ${fmtT(w.today.min)} max ${fmtT(w.today.max)}${w.today.rain ? `, pioggia ${w.today.rain}%` : ""}`;
+    btn.setAttribute("aria-label", `Meteo ${btn.title}`);
+    wrap.hidden = false;
+  }).catch(() => {});
+  return wrap;
 }

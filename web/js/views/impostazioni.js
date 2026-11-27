@@ -2,6 +2,7 @@
 import { del, get, post, put } from "../api.js";
 import { BASE_THEMES, THEMES, applyTheme, previewTheme } from "../app.js";
 import { extrasSettings } from "../esterni.js";
+import { homeSettingsCard } from "../home.js";
 import { FONT_AREAS, fontControls } from "../fonts.js";
 import { openEditor } from "../form.js";
 import {
@@ -121,7 +122,7 @@ export async function render(root, ctx) {
   clear(root,
     pageHead("Impostazioni", `Plancia ${store.session.version} · modalità ${store.session.mode}`),
     h("div", { class: "cols" },
-      h("div", { class: "col-main" }, look,
+      h("div", { class: "col-main" }, look, homeSettingsCard(),
         card("Carattere dei documenti", h("div", { class: "card-body stack" },
           h("p", { class: "hint" }, "Tipo e dimensione del testo nei campi e nella stampa. La scelta vale su questo PC; si cambia anche dal pulsante «Aa» dentro verbali, consulenze e procedure."),
           FONT_AREAS.map(([k, l]) => h("div", { class: "stack", style: { gap: "4px" } }, h("b", { class: "small" }, l), fontControls(k))))),
