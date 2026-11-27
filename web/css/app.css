@@ -831,3 +831,4 @@ a.badge:hover { text-decoration: none; filter: brightness(.97); }
 .mini-notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .postit.mini { min-height: 70px; padding: 10px; gap: 4px; font-size: 13px; }
 .postit.mini .body { -webkit-line-clamp: 4; font-size: 12.5px; }
+.weather-chip .w-chip-place { color: var(--muted); font-weight: 500; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

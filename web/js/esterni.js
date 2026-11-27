@@ -165,7 +165,7 @@ export function weatherChip() {
       return;
     }
     const c = w.current;
-    clear(btn, h("span", { class: "w-chip-icon" }, icon(c.icon)), h("b", {}, fmtT(c.temp)));
+    clear(btn, h("span", { class: "w-chip-icon" }, icon(c.icon)), h("b", {}, fmtT(c.temp)), h("span", { class: "w-chip-place" }, w.place.name));
     btn.title = `${w.place.name}: ${c.text}, ${fmtT(c.temp)} · oggi min ${fmtT(w.today.min)} max ${fmtT(w.today.max)}${w.today.rain ? `, pioggia ${w.today.rain}%` : ""}`;
     btn.setAttribute("aria-label", `Meteo ${btn.title}`);
     wrap.hidden = false;

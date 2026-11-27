@@ -339,6 +339,7 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
     await go("#/oggi");
     await page.waitForSelector(".weather-chip-wrap:not([hidden]) .weather-chip b");
     assert((await page.textContent(".weather-chip b")) === "6°", "temperatura nell'icona compatta");
+    assert((await page.textContent(".weather-chip .w-chip-place")) === "Trento", "città nell'icona compatta");
     await page.click(".weather-chip"); await page.waitForSelector(".weather-pop .w-temp");
     assert((await page.textContent(".weather-pop .weather")).includes("pioggia 70%"), "previsione di oggi nel dettaglio");
     await page.mouse.click(5, 300);
